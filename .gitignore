@@ -1,0 +1,6 @@
+__pycache__/
+*.py[cod]
+output/
+data/cache_mapas/
+.vscode/
+.idea/
