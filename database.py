@@ -73,6 +73,25 @@ def _conn() -> Iterator[sqlite3.Connection]:
 def init_db() -> None:
     with _conn() as con:
         con.executescript(_SCHEMA)
+        # Se a tabela sapl_materias estiver vazia (ex.: deploy novo na nuvem),
+        # restaura o acervo histórico consolidado em milissegundos via seed compactado
+        total = con.execute("SELECT count(*) FROM sapl_materias").fetchone()[0]
+        if total == 0:
+            seed_path = DATA_DIR / "sapl_seed.json.gz"
+            if seed_path.exists():
+                try:
+                    import gzip
+                    import json
+                    with gzip.open(seed_path, "rt", encoding="utf-8") as f:
+                        dados = json.load(f)
+                    if dados:
+                        colunas = list(dados[0].keys())
+                        q = ",".join(["?"] * len(colunas))
+                        sql = f"INSERT OR IGNORE INTO sapl_materias ({','.join(colunas)}) VALUES ({q})"
+                        valores = [[d.get(c) for c in colunas] for d in dados]
+                        con.executemany(sql, valores)
+                except Exception:
+                    pass
 
 
 # --------------------------------------------------------------------------- #

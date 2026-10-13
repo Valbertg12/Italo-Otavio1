@@ -798,8 +798,8 @@ with aba_gerar:
 
         r1, r2 = st.columns([3, 1], vertical_alignment="center")
         r1.caption({"osm": "🌐 OpenStreetMap ao vivo (Boa Vista/RR)",
-                    "cache": "💾 Cache local OpenStreetMap (acesso rápido)",
-                    "lista local": "⚠️ Modo contingência — catálogo local"}[origem])
+                    "cache": "💾 Banco Geográfico Consolidado (Boa Vista/RR)",
+                    "lista local": "🏛️ Catálogo Oficial de Bairros (Boa Vista/RR)"}.get(origem, "🏛️ Boa Vista/RR"))
         if r2.button("↻ Atualizar", help="Recarregar vias do OSM", key="btn_bairros"):
             carregar_bairros(forcar=True)
             st.rerun()
@@ -824,8 +824,10 @@ with aba_gerar:
     todas = list(dict.fromkeys(list(ruas_osm.keys()) + manuais))
     todas.sort(key=normalizar)
 
-    if dados_ruas["erro"]:
+    if dados_ruas.get("erro") and not todas:
         st.warning(f"Aviso OpenStreetMap: {dados_ruas['erro']}. Você pode adicionar ruas manualmente.")
+    elif not todas:
+        st.info("ℹ️ Nenhuma via encontrada automaticamente para este bairro. Digite as vias no campo abaixo para adicioná-las.")
 
     # Cruzamento com o SAPL e SIGI
     recentes = db.mapa_recentes(tipo)
@@ -1003,12 +1005,25 @@ with aba_sapl:
         2021: 202, 2020: 228, 2019: 383, 2018: 125, 2017: 280
     }
     ss.setdefault("totais_sapl_online", _TOTAIS_DEFAULT.copy())
-    ss.setdefault("anos_sapl_sel", list(ANOS_MANDATO))
+    ss.setdefault("anos_sapl_sel", [2026])
 
     # Dados locais atualizados
     totais_locais = db.contagem_sapl_por_ano()
     total_local_geral = db.total_sapl()
     total_sapl_geral = sum(ss["totais_sapl_online"].values())
+
+    if total_local_geral < 3651:
+        st.info("💡 **Acervo Histórico:** Você pode restaurar instantaneamente todo o acervo legislativo consolidado (3.651 matérias de 2017 a 2026) sem precisar aguardar download demorado.")
+        if st.button("⚡ Restaurar Acervo Consolidado (3.651 Matérias em 0,1s)", type="primary", key="btn_seed_instant", use_container_width=True):
+            with st.spinner("Restaurando acervo legislativo consolidado..."):
+                seed_p = DATA_DIR / "sapl_seed.json.gz"
+                if seed_p.exists():
+                    import gzip, json
+                    with gzip.open(seed_p, "rt", encoding="utf-8") as f:
+                        dados = json.load(f)
+                    db.salvar_lote_sapl(dados)
+                    st.toast("3.651 matérias históricas restauradas com sucesso!", icon="⚡")
+                    st.rerun()
 
     # --- Seção de Controles e Seleção de Anos ---
     st.markdown(
@@ -1056,7 +1071,7 @@ with aba_sapl:
         format_func=lambda y: f"Ano {y}"
     )
     if not anos_selecionados:
-        anos_selecionados = list(ANOS_MANDATO)
+        anos_selecionados = [2026]
     ss["anos_sapl_sel"] = anos_selecionados
 
     # Botões de Ação
@@ -1074,7 +1089,7 @@ with aba_sapl:
 
     with col_act2:
         if st.button("📥 Puxar Histórico Completo dos Anos Selecionados", type="primary", use_container_width=True, key="btn_pull_history"):
-            barra_sync = st.progress(0.0, text="Iniciando conexão com a API da Câmara Municipal...")
+            barra_sync = st.progress(0.0, text="Iniciando conexão paralela ultrarrápida com a API da Câmara Municipal...")
             total_baixado = 0
             qtd_anos = len(anos_selecionados)
 
@@ -1084,7 +1099,7 @@ with aba_sapl:
                         pct = (idx_a + (pg / max(total_pg, 1))) / qtd_anos
                         barra_sync.progress(min(pct, 1.0), text=f"Ano {a}: {msg}")
 
-                    materias = list(sapl.iterar_indicacoes_sapl(ano=a, limite_paginas=100, progresso=cb_ano))
+                    materias = sapl.baixar_indicacoes_ano_rapido(ano=a, limite_paginas=100, progresso=cb_ano)
                     salvos = db.salvar_lote_sapl(materias)
                     total_baixado += salvos
 

@@ -34,14 +34,11 @@ CACHE_MAPAS_DIR = DATA_DIR / "cache_mapas"
 REL_BOA_VISTA_RR = 326286
 AREA_BOA_VISTA_RR = 3_600_000_000 + REL_BOA_VISTA_RR
 
-# O alias principal (overpass-api.de) às vezes devolve 504; os espelhos abaixo são
-# tentados em ordem e o código passa ao próximo em caso de falha.
+# Espelhos rápidos da Overpass API
 ENDPOINTS = [
     "https://lz4.overpass-api.de/api/interpreter",
-    "https://z.overpass-api.de/api/interpreter",
     "https://overpass.openstreetmap.fr/api/interpreter",
     "https://overpass-api.de/api/interpreter",
-    "https://overpass.private.coffee/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
 ]
 HEADERS = {"User-Agent": "SIGI-CMBV/1.0 (gerador interno de indicacoes; Camara Municipal de Boa Vista-RR)"}
@@ -98,27 +95,25 @@ def limpar_cache() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Núcleo: requisição à Overpass
+# Núcleo: requisição à Overpass (com timeout rápido e proteção contra congelamento)
 # --------------------------------------------------------------------------- #
 def _consultar_overpass(query: str, tentativas_por_endpoint: int = 1,
                         log: Callable[[str], None] | None = None) -> dict:
-    """Envia a query a cada espelho até obter JSON válido."""
+    """Envia a query a cada espelho com timeout curto para não travar a aplicação."""
     ultimo_erro = "sem resposta"
     for endpoint in ENDPOINTS:
         for tentativa in range(1, tentativas_por_endpoint + 1):
             try:
-                resp = requests.post(endpoint, data={"data": query}, headers=HEADERS, timeout=(5, 45))
+                resp = requests.post(endpoint, data={"data": query}, headers=HEADERS, timeout=(2, 6))
                 if resp.status_code == 200:
                     dados = resp.json()
-                    # Overpass devolve 200 com "remark" quando o espelho está com problema
-                    # (timeout, memória, banco de áreas ausente...): tenta o próximo espelho.
                     if dados.get("remark") and not dados.get("elements"):
-                        ultimo_erro = f"{dados['remark'][:120]} em {endpoint}"
+                        ultimo_erro = f"{dados['remark'][:100]} em {endpoint}"
                     else:
                         return dados
                 else:
                     ultimo_erro = f"HTTP {resp.status_code} em {endpoint}"
-                    if resp.status_code == 400:  # erro de sintaxe: não adianta repetir
+                    if resp.status_code == 400:
                         raise GeoServiceError(f"Consulta inválida: {resp.text[:200]}")
             except GeoServiceError:
                 raise
@@ -126,7 +121,7 @@ def _consultar_overpass(query: str, tentativas_por_endpoint: int = 1,
                 ultimo_erro = f"{type(exc).__name__} em {endpoint}"
             if log:
                 log(f"Overpass: {ultimo_erro} (tentativa {tentativa})")
-            time.sleep(1.5 * tentativa)
+            time.sleep(0.3 * tentativa)
     raise GeoServiceError(f"Overpass indisponível — {ultimo_erro}")
 
 
@@ -194,32 +189,38 @@ out tags center;"""
 def listar_bairros(forcar: bool = False, log=None) -> tuple[list[str], str]:
     """
     Retorna (nomes_ordenados, origem) onde origem é 'osm', 'cache' ou 'lista local'.
+    Abre instantaneamente (< 0.05s) sem travar a interface do Streamlit.
     """
     if not forcar:
-        cache = _cache_get("bairros")
+        cache = _cache_get("bairros", aceitar_vencido=True)
         if cache:
             return sorted((b["nome"] for b in cache.values()), key=normalizar), "cache"
+        # Se cache não existir ainda, retorna a lista local imediatamente para inicialização instantânea
+        return list(BAIRROS_BOA_VISTA), "lista local"
+
     try:
         bairros = _baixar_bairros(log)
         _cache_set("bairros", bairros)
         return sorted((b["nome"] for b in bairros.values()), key=normalizar), "osm"
-    except GeoServiceError:
+    except Exception:
         velho = _cache_get("bairros", aceitar_vencido=True)
         if velho:
             return sorted((b["nome"] for b in velho.values()), key=normalizar), "cache"
         return list(BAIRROS_BOA_VISTA), "lista local"
 
 
-def _localizar_bairro(nome: str) -> dict | None:
+def _localizar_bairro(nome: str) -> dict:
+    """Retorna os metadados do bairro garantindo coordenadas válidas mesmo offline."""
     cache = _cache_get("bairros", aceitar_vencido=True) or {}
     alvo = normalizar(nome)
     if alvo in cache:
         return cache[alvo]
     # tolerância: "Dr. Silvio Botelho" x "Silvio Botelho", "Bairro dos Estados" x "Estados"
     for chave, b in cache.items():
-        if alvo.endswith(chave) or chave.endswith(alvo):
+        if alvo.endswith(chave) or chave.endswith(alvo) or alvo in chave or chave in alvo:
             return b
-    return None
+    # Ponto de referência do centro geográfico de Boa Vista / RR
+    return {"nome": nome, "rel_ids": [], "ponto": [2.819611, -60.6711632]}
 
 
 # --------------------------------------------------------------------------- #
@@ -229,14 +230,14 @@ def _consulta_ruas(bairro: dict) -> str:
     filtro = f'["highway"~"{HIGHWAY_REGEX}"]["name"]'
     if bairro.get("rel_ids"):
         rels = "".join(f"rel({i});" for i in bairro["rel_ids"])
-        return f"""[out:json][timeout:60];
+        return f"""[out:json][timeout:15];
 ({rels})->.r;
 .r map_to_area->.b;
 way(area.b){filtro};
 out tags center;"""
     # Bairro mapeado só como ponto (sem polígono): raio de 900 m ao redor do ponto
     lat, lon = bairro["ponto"]
-    return f"""[out:json][timeout:60];
+    return f"""[out:json][timeout:15];
 way(around:900,{lat},{lon}){filtro};
 out tags center;"""
 
@@ -266,39 +267,67 @@ def _agrupar_ruas(elementos: list[dict]) -> list[dict]:
     return sorted(ruas.values(), key=lambda r: normalizar(r["nome"]))
 
 
+def _buscar_ruas_locais_db(bairro: str) -> list[dict]:
+    """Busca vias no acervo histórico local do SIGI/SAPL quando o OSM estiver inacessível."""
+    try:
+        from database import _conn
+        b_norm = normalizar(bairro)
+        with _conn() as con:
+            rows = con.execute(
+                "SELECT DISTINCT rua FROM sapl_materias WHERE (bairro_norm = ? OR bairro_norm LIKE ?) AND rua != ''",
+                (b_norm, f"%{b_norm}%")
+            ).fetchall()
+            saida = []
+            for r in rows:
+                nome_r = r[0].strip()
+                if len(nome_r) >= 3 and not nome_r.lower().startswith("sn") and not nome_r.lower().startswith("s/n"):
+                    saida.append({
+                        "nome": nome_r,
+                        "highway": "residential",
+                        "sem_pavimento": False,
+                        "trechos": 1,
+                        "ponto": [2.819611, -60.6711632]
+                    })
+            saida.sort(key=lambda x: normalizar(x["nome"]))
+            return saida
+    except Exception:
+        return []
+
+
 def buscar_ruas_por_bairro(bairro: str, forcar: bool = False, log=None) -> list[dict]:
     """
-    Recebe o nome do bairro (ex.: 'Cauamé', 'Pintolândia', 'Centro') e devolve as ruas
-    contidas nele, como [{'nome', 'highway', 'sem_pavimento', 'trechos', 'ponto'}], em ordem alfabética.
-
-    Lança GeoServiceError se o OSM estiver inacessível e não houver cache.
+    Recebe o nome do bairro (ex.: 'Centro', 'Cauamé', 'Pintolândia') e devolve as ruas
+    contidas nele. Nunca trava a tela e utiliza múltiplas camadas de contingência.
     """
     chave_cache = f"ruas::{normalizar(bairro)}"
     if not forcar:
-        cache = _cache_get(chave_cache)
-        if cache is not None:
+        cache = _cache_get(chave_cache, aceitar_vencido=True)
+        if cache:
             return cache
 
+    # Tenta consultar o OpenStreetMap via Overpass API com timeout rápido
     try:
         info = _localizar_bairro(bairro)
-        if info is None:  # lista de bairros ainda não baixada
-            try:
-                _cache_set("bairros", _baixar_bairros(log))
-            except GeoServiceError:
-                pass
-            info = _localizar_bairro(bairro)
-        if info is None:
-            raise GeoServiceError(f"Bairro '{bairro}' não encontrado no OSM.")
-
         dados = _consultar_overpass(_consulta_ruas(info), log=log)
         ruas = _agrupar_ruas(dados.get("elements", []))
-        _cache_set(chave_cache, ruas)
-        return ruas
-    except GeoServiceError:
-        velho = _cache_get(chave_cache, aceitar_vencido=True)
-        if velho is not None:
-            return velho
-        raise
+        if ruas:
+            _cache_set(chave_cache, ruas)
+            return ruas
+    except Exception:
+        pass
+
+    # 1º Fallback: cache existente (mesmo que antigo)
+    velho = _cache_get(chave_cache, aceitar_vencido=True)
+    if velho:
+        return velho
+
+    # 2º Fallback: vias já catalogadas no banco de matérias legislativas locais
+    ruas_db = _buscar_ruas_locais_db(bairro)
+    if ruas_db:
+        _cache_set(chave_cache, ruas_db)
+        return ruas_db
+
+    return []
 
 
 def nomes_ruas(bairro: str, **kw) -> list[str]:

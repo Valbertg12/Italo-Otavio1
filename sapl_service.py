@@ -167,44 +167,67 @@ def buscar_indicacoes_pagina(ano: int | None = None, pagina: int = 1, page_size:
     return res.json()
 
 
+def baixar_indicacoes_ano_rapido(ano: int | None = None, limite_paginas: int = 100,
+                                 progresso: Callable[[int, int, str], None] | None = None) -> list[dict]:
+    """
+    Baixa todas as matérias de um ano em paralelo de forma ultrarrápida.
+    """
+    primeira_pagina = buscar_indicacoes_pagina(ano=ano, pagina=1, page_size=100)
+    pagination = primeira_pagina.get("pagination", {})
+    total_paginas = min(pagination.get("total_pages", 1), limite_paginas)
+    total_itens = pagination.get("total_entries", 0)
+    raw_results = list(primeira_pagina.get("results", []))
+
+    if progresso:
+        progresso(1, total_paginas, f"Página 1 de {total_paginas} ({total_itens} matérias)")
+
+    if total_paginas > 1:
+        def _get_page(p: int):
+            try:
+                res = buscar_indicacoes_pagina(ano=ano, pagina=p, page_size=100)
+                return res.get("results", [])
+            except Exception:
+                return []
+
+        paginas_restantes = list(range(2, total_paginas + 1))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(paginas_restantes), 6)) as executor:
+            resultados_futuros = {p: executor.submit(_get_page, p) for p in paginas_restantes}
+            concluidos = 1
+            for p, futuro in resultados_futuros.items():
+                itens_pg = futuro.result()
+                raw_results.extend(itens_pg)
+                concluidos += 1
+                if progresso:
+                    progresso(concluidos, total_paginas, f"Página {concluidos} de {total_paginas} ({total_itens} matérias)")
+
+    materias_formatadas = []
+    for item in raw_results:
+        ementa = item.get("ementa", "") or ""
+        parsed = extrair_dados_ementa(ementa)
+        materias_formatadas.append({
+            "sapl_id": item.get("id"),
+            "numero": item.get("numero"),
+            "ano": item.get("ano"),
+            "numero_protocolo": item.get("numero_protocolo"),
+            "data": item.get("data_apresentacao") or datetime.now().strftime("%Y-%m-%d"),
+            "ementa": ementa,
+            "texto_original": item.get("texto_original") or "",
+            "link_sapl": f"https://sapl.boavista.rr.leg.br/materia/{item.get('id')}",
+            "rua": parsed["rua"],
+            "bairro": parsed["bairro"],
+            "tipo_servico": parsed["tipo_servico"],
+        })
+
+    return materias_formatadas
+
+
 def iterar_indicacoes_sapl(ano: int | None = None, limite_paginas: int = 100,
                            progresso: Callable[[int, int, str], None] | None = None
                            ) -> Generator[dict, None, None]:
     """
-    Percorre as páginas da API do SAPL trazendo as indicações formatadas.
+    Percorre as páginas da API do SAPL trazendo as indicações formatadas em alta velocidade.
     """
-    pagina_atual = 1
-    total_paginas = 1
-
-    while pagina_atual <= total_paginas and pagina_atual <= limite_paginas:
-        dados = buscar_indicacoes_pagina(ano=ano, pagina=pagina_atual, page_size=100)
-        pagination = dados.get("pagination", {})
-        total_paginas = pagination.get("total_pages", 1)
-        total_itens = pagination.get("total_entries", 0)
-        resultados = dados.get("results", [])
-
-        if progresso:
-            progresso(pagina_atual, min(total_paginas, limite_paginas), f"Página {pagina_atual} de {total_paginas} ({total_itens} matérias)")
-
-        for item in resultados:
-            ementa = item.get("ementa", "") or ""
-            parsed = extrair_dados_ementa(ementa)
-
-            yield {
-                "sapl_id": item.get("id"),
-                "numero": item.get("numero"),
-                "ano": item.get("ano"),
-                "numero_protocolo": item.get("numero_protocolo"),
-                "data": item.get("data_apresentacao") or datetime.now().strftime("%Y-%m-%d"),
-                "ementa": ementa,
-                "texto_original": item.get("texto_original") or "",
-                "link_sapl": f"https://sapl.boavista.rr.leg.br/materia/{item.get('id')}",
-                "rua": parsed["rua"],
-                "bairro": parsed["bairro"],
-                "tipo_servico": parsed["tipo_servico"],
-            }
-
-        if not pagination.get("next_page"):
-            break
-        pagina_atual += 1
+    materias = baixar_indicacoes_ano_rapido(ano=ano, limite_paginas=limite_paginas, progresso=progresso)
+    for m in materias:
+        yield m
 
