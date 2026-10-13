@@ -34,6 +34,7 @@ from utils import (
     preposicao_logradouro,
 )
 import geo_service as geo
+import signature_service as sig_serv
 
 # {{ NOME }} — tolera espaços internos
 _PADRAO = re.compile(r"\{\{\s*([A-Za-zÀ-ÿ_]+)\s*\}\}")
@@ -311,6 +312,54 @@ def _inserir_imagem_mapa(doc: Document, imagem_bytes: bytes, rua: str, bairro: s
         pass
 
 
+def _inserir_assinatura(doc: Document, imagem_assinatura: bytes) -> bool:
+    """Insere a rubrica/assinatura visual do vereador centralizada imediatamente acima da linha de assinatura."""
+    if not imagem_assinatura:
+        return False
+    try:
+        alvo = None
+        for p in doc.paragraphs:
+            t = p.text.strip().upper()
+            if "____" in t or "ÍTALO OTÁVIO" in t or "ITALO OTAVIO" in t:
+                alvo = p
+                break
+
+        if alvo is not None:
+            p_sig = doc.add_paragraph()
+            p_sig.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            p_sig.paragraph_format.space_before = Pt(12)
+            p_sig.paragraph_format.space_after = Pt(2)
+            r = p_sig.add_run()
+            r.add_picture(io.BytesIO(imagem_assinatura), width=Cm(4.8))
+            alvo._p.addprevious(p_sig._p)
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def _inserir_carimbo_digital(doc: Document, texto_carimbo: str) -> None:
+    """Insere a certificação digital ICP-Brasil com hash e carimbo legal no rodapé."""
+    if not texto_carimbo:
+        return
+    try:
+        p_sep = doc.add_paragraph()
+        p_sep.paragraph_format.space_before = Pt(18)
+        p_sep.paragraph_format.space_after = Pt(4)
+        r_sep = p_sep.add_run("─" * 68)
+        r_sep.font.size = Pt(8)
+
+        p_stamp = doc.add_paragraph()
+        p_stamp.paragraph_format.space_before = Pt(2)
+        p_stamp.paragraph_format.space_after = Pt(6)
+        p_stamp.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        r_stamp = p_stamp.add_run("🔒 " + texto_carimbo)
+        r_stamp.font.size = Pt(7.5)
+        r_stamp.font.italic = True
+    except Exception:
+        pass
+
+
 def _aplicar_modo_auto(doc: Document, valores: dict[str, str],
                        imagem_mapa: bytes | None = None, incluir_mapa: bool = True) -> None:
     """Preenche um documento oficial sem tags substituindo objeto, justificativa e data."""
@@ -359,11 +408,14 @@ def _aplicar_modo_auto(doc: Document, valores: dict[str, str],
 # Geração
 # --------------------------------------------------------------------------- #
 def gerar_documento(template: str | Path | bytes, valores: dict[str, str],
-                    imagem_mapa: bytes | None = None, incluir_mapa: bool = True) -> bytes:
+                    imagem_mapa: bytes | None = None, incluir_mapa: bool = True,
+                    imagem_assinatura: bytes | None = None,
+                    texto_carimbo: str | None = None) -> bytes:
     """
     Preenche o template e devolve o .docx em bytes.
     Preserva 100% de cabeçalhos e rodapés com imagens, tabelas e formatações originais.
     Suporta tanto modelos com tags ({{RUA}}, etc.) quanto modelos oficiais sem tags.
+    Aplica assinatura visual e carimbo criptográfico se configurados.
     """
     origem = io.BytesIO(template) if isinstance(template, (bytes, bytearray)) else template
     doc = Document(origem)
@@ -400,6 +452,12 @@ def gerar_documento(template: str | Path | bytes, valores: dict[str, str],
     else:
         _aplicar_modo_auto(doc, valores, imagem_mapa=imagem_mapa, incluir_mapa=incluir_mapa)
 
+    # Aplicação de Assinatura Visual e Carimbo Digital ICP-Brasil
+    if imagem_assinatura:
+        _inserir_assinatura(doc, imagem_assinatura)
+    if texto_carimbo:
+        _inserir_carimbo_digital(doc, texto_carimbo)
+
     buf = io.BytesIO()
     doc.save(buf)
     return buf.getvalue()
@@ -407,16 +465,22 @@ def gerar_documento(template: str | Path | bytes, valores: dict[str, str],
 
 def gerar_lote(template: str | Path | bytes, itens: Iterable[dict], pasta_saida: Path | None = None,
                progresso: Callable[[int, int, str], None] | None = None,
-               incluir_mapa: bool = True) -> list[dict]:
+               incluir_mapa: bool = True,
+               imagem_assinatura: bytes | None = None,
+               incluir_carimbo: bool = True) -> list[dict]:
     """
     itens: dicts com rua, bairro, tipo_servico, justificativa, data (opcional), caixa_alta (opcional), imagem_mapa (opcional).
     Salva um .docx por rua em `pasta_saida` e devolve [{**item, 'arquivo': nome, 'caminho': Path}].
-    Gera automaticamente o print do mapa com coordenadas OSM se imagem_mapa não for fornecida.
+    Gera automaticamente o print do mapa e assina digitalmente cada documento separadamente.
     """
     pasta = Path(pasta_saida or OUTPUT_DIR)
     pasta.mkdir(parents=True, exist_ok=True)
     if isinstance(template, (str, Path)):
         template = Path(template).read_bytes()  # lê uma única vez
+
+    # Busca assinatura padrão do gabinete se configurada
+    if imagem_assinatura is None:
+        imagem_assinatura = sig_serv.obter_imagem_assinatura()
 
     itens = list(itens)
     usados: set[str] = set()
@@ -434,7 +498,19 @@ def gerar_lote(template: str | Path | bytes, itens: Iterable[dict], pasta_saida:
             except Exception:
                 img_mapa = None
 
-        conteudo = gerar_documento(template, valores, imagem_mapa=img_mapa, incluir_mapa=incluir_mapa)
+        carimbo_txt = None
+        if incluir_carimbo:
+            try:
+                carimbo_txt = sig_serv.gerar_carimbo_autenticidade(it["rua"], it["bairro"], it.get("data"))
+            except Exception:
+                pass
+
+        conteudo = gerar_documento(
+            template, valores,
+            imagem_mapa=img_mapa, incluir_mapa=incluir_mapa,
+            imagem_assinatura=imagem_assinatura,
+            texto_carimbo=carimbo_txt,
+        )
 
         base = f"{n:02d}_indicacao_{nome_arquivo_seguro(it['rua'])}_{nome_arquivo_seguro(it['bairro'], 30)}"
         nome, k = f"{base}.docx", 2

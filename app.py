@@ -21,11 +21,13 @@ import database as db
 import doc_generator as dg
 import geo_service as geo
 import sapl_service as sapl
+import signature_service as sig_serv
 
 importlib.reload(db)
 importlib.reload(dg)
 importlib.reload(geo)
 importlib.reload(sapl)
+importlib.reload(sig_serv)
 from utils import (
     META_DIARIA,
     MESES_ALERTA,
@@ -426,6 +428,87 @@ section[data-testid="stSidebar"] {
 .gov-footer a:hover {
     text-decoration: underline;
 }
+
+/* ------------------------------------------------------------------------- */
+/* Responsividade e Adaptação para Celulares (iPhone iOS e Android)          */
+/* ------------------------------------------------------------------------- */
+@media (max-width: 768px) {
+    .block-container {
+        padding-top: 0.5rem !important;
+        padding-bottom: 2.5rem !important;
+        padding-left: 0.65rem !important;
+        padding-right: 0.65rem !important;
+    }
+
+    .gov-header {
+        padding: 1.1rem 0.9rem !important;
+        border-radius: 10px !important;
+        margin-bottom: 0.85rem !important;
+    }
+
+    .gov-title {
+        font-size: 1.38rem !important;
+        line-height: 1.25 !important;
+        gap: 6px !important;
+    }
+
+    .gov-subtitle {
+        font-size: 0.84rem !important;
+        line-height: 1.38 !important;
+    }
+
+    .gov-author-credit {
+        font-size: 0.78rem !important;
+    }
+
+    .gov-stat-card {
+        padding: 0.85rem 0.95rem !important;
+        margin-bottom: 0.5rem !important;
+    }
+
+    .gov-stat-val {
+        font-size: 1.55rem !important;
+    }
+
+    .gov-goal-card {
+        padding: 0.95rem 1rem !important;
+    }
+
+    /* Tabs horizontais com rolagem suave no celular */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 4px !important;
+        overflow-x: auto !important;
+        flex-wrap: nowrap !important;
+        -webkit-overflow-scrolling: touch !important;
+        padding-bottom: 4px !important;
+        border-bottom: 1px solid #1A2847 !important;
+    }
+
+    .stTabs [data-baseweb="tab"] {
+        padding: 8px 12px !important;
+        font-size: 0.82rem !important;
+        white-space: nowrap !important;
+        flex-shrink: 0 !important;
+    }
+
+    /* Botões confortáveis para o polegar no celular */
+    .stButton > button, .stDownloadButton > button {
+        min-height: 46px !important;
+        font-size: 0.94rem !important;
+        width: 100% !important;
+    }
+
+    .gov-doc-sheet {
+        padding: 12px 14px !important;
+        font-size: 0.84rem !important;
+        word-break: break-word !important;
+    }
+
+    /* Ajuste de formulários e inputs para toque */
+    div[data-baseweb="select"] {
+        min-height: 44px !important;
+    }
+}
 </style>
 """
 st.markdown(PALETA_CSS, unsafe_allow_html=True)
@@ -673,14 +756,28 @@ aba_gerar, aba_sapl, aba_dash, aba_hist, aba_conf = st.tabs(
 with aba_gerar:
     lote = ss["ultimo_lote"]
     if lote:
-        c1, c2 = st.columns([3, 1], vertical_alignment="center")
+        c1, c2 = st.columns([2.5, 1.5], vertical_alignment="center")
         c1.success(f"✅ Lote gerado com sucesso: **{lote['qtd']}** indicações legislativas prontas · `{lote['nome']}`")
-        c2.download_button("⬇️ Baixar Pacote ZIP", data=lote["bytes"], file_name=lote["nome"],
+        c2.download_button("⬇️ Baixar Pacote Completo (ZIP)", data=lote["bytes"], file_name=lote["nome"],
                            mime="application/zip", type="primary", width="stretch",
                            key="dl_zip")
-        with st.expander("📄 Ver relação de arquivos .docx incluídos no pacote"):
-            for a in lote["arquivos"]:
-                st.write(f"• `{a}`")
+
+        with st.expander("📂 Baixar Documentos Separadamente (Indicações Individuais)", expanded=True):
+            st.markdown("Cada indicação foi gerada como um **documento individual** pronto para protocolo ou envio:")
+            pasta_p = Path(lote["pasta"])
+            for idx_arq, arq_nome in enumerate(lote["arquivos"], start=1):
+                c_arq = pasta_p / arq_nome
+                if c_arq.exists():
+                    cd1, cd2 = st.columns([3, 1.3], vertical_alignment="center")
+                    with cd1:
+                        st.markdown(f"📄 **{arq_nome}**")
+                    with cd2:
+                        st.download_button(f"⬇️ Baixar #{idx_arq:02d}",
+                                           data=c_arq.read_bytes(),
+                                           file_name=arq_nome,
+                                           mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                           key=f"dl_indiv_{idx_arq}_{arq_nome}",
+                                           use_container_width=True)
             st.caption(f"Arquivos salvos em: `{lote['pasta']}`")
         st.divider()
 
@@ -1263,6 +1360,77 @@ with aba_conf:
         dg.criar_template_padrao(TEMPLATE_PATH)
         analisar_template_cache.clear()
         st.success("Modelo padrão restabelecido.")
+        st.rerun()
+
+    st.divider()
+    st.markdown("### ✍️ Assinatura Digital & Certificado ICP-Brasil")
+    st.caption("Configure a assinatura oficial para que todos os documentos já saiam assinados e autenticados separadamente.")
+
+    col_sig_a, col_sig_b = st.columns(2, gap="large")
+
+    # 1. Assinatura Visual (Rubrica em Imagem)
+    with col_sig_a:
+        st.markdown("#### 1. Assinatura Visual / Rubrica")
+        st.write("Anexe a imagem da assinatura/rubrica oficial do parlamentar (.png com fundo transparente):")
+
+        img_existente = sig_serv.obter_imagem_assinatura()
+        if img_existente:
+            st.image(img_existente, caption="Assinatura atual ativa para os documentos", width=220)
+            if st.button("🗑️ Remover Assinatura Visual", key="btn_del_sig"):
+                sig_serv.remover_imagem_assinatura()
+                st.toast("Assinatura removida.", icon="🗑️")
+                st.rerun()
+        else:
+            st.info("Nenhuma imagem de assinatura carregada ainda.")
+
+        up_sig = st.file_uploader("Carregar imagem da assinatura (.png, .jpg)", type=["png", "jpg", "jpeg"], key="up_sig_img")
+        if up_sig is not None:
+            if st.button("💾 Salvar Assinatura Visual", type="primary", key="btn_salvar_sig"):
+                sig_serv.salvar_imagem_assinatura(up_sig.getvalue())
+                st.toast("Assinatura visual salva com sucesso!", icon="✅")
+                st.rerun()
+
+    # 2. Certificado Digital ICP-Brasil A1 (Para quando comprar)
+    with col_sig_b:
+        st.markdown("#### 2. Certificado Digital ICP-Brasil A1")
+        st.write("Quando você adquirir o Certificado Digital e-CPF A1 (.pfx ou .p12), instale aqui:")
+
+        cert_info = sig_serv.obter_info_certificado()
+        if cert_info:
+            st.success("🔒 **Certificado ICP-Brasil Instalado:**")
+            st.write(f"• **Titular:** `{cert_info['titular']}`")
+            if cert_info.get("cpf"):
+                st.write(f"• **CPF:** `{cert_info['cpf']}`")
+            st.write(f"• **Emissor:** `{cert_info['emissor']}`")
+            st.write(f"• **Validade:** {cert_info['valido_de']} até **{cert_info['valido_ate']}**")
+            if st.button("🗑️ Remover Certificado A1", key="btn_del_cert"):
+                sig_serv.remover_certificado_a1()
+                st.toast("Certificado removido.", icon="🗑️")
+                st.rerun()
+        else:
+            st.info("ℹ️ **Aguardando compra do Certificado A1:** Você pode comprar um e-CPF A1 em qualquer autoridade certificadora (Certisign, Serasa, Soluti, Valid). Assim que comprar, anexe o arquivo `.pfx` abaixo com a senha e todos os documentos já saem assinados digitalmente!")
+
+        up_cert = st.file_uploader("Carregar arquivo do certificado (.pfx, .p12)", type=["pfx", "p12"], key="up_cert_file")
+        senha_cert = st.text_input("Senha do Certificado Digital", type="password", key="pwd_cert_input",
+                                   help="Senha cadastrada no momento da emissão do e-CPF A1.")
+
+        if up_cert is not None and senha_cert:
+            if st.button("🔐 Validar e Instalar Certificado A1", type="primary", key="btn_val_cert"):
+                res_cert = sig_serv.instalar_certificado_a1(up_cert.getvalue(), senha_cert)
+                if res_cert["sucesso"]:
+                    st.success("Certificado ICP-Brasil instalado com sucesso!")
+                    st.rerun()
+                else:
+                    st.error(res_cert["erro"])
+
+    st.write("")
+    cfg_sig = sig_serv.obter_config()
+    st.markdown("#### 3. Carimbo de Autenticidade Digital ICP-Brasil")
+    usar_carimbo = st.toggle("Incluir carimbo de autenticidade eletrônica no rodapé dos documentos (MP nº 2.200-2/2001 e Lei nº 14.063/2020)",
+                             value=cfg_sig.get("incluir_carimbo_icp", True), key="tog_carimbo_icp",
+                             help="Insere automaticamente o código hash verificador e a indicação de assinatura digital institucional em cada indicação gerada.")
+    if usar_carimbo != cfg_sig.get("incluir_carimbo_icp", True):
+        sig_serv.atualizar_config(incluir_carimbo_icp=usar_carimbo)
         st.rerun()
 
     st.divider()
