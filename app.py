@@ -17,17 +17,23 @@ import importlib
 import pandas as pd
 import streamlit as st
 
+import utils
+try:
+    importlib.reload(utils)
+except Exception:
+    pass
+
 import database as db
 import doc_generator as dg
 import geo_service as geo
 import sapl_service as sapl
 import signature_service as sig_serv
 
-importlib.reload(db)
-importlib.reload(dg)
-importlib.reload(geo)
-importlib.reload(sapl)
-importlib.reload(sig_serv)
+for _mod in (db, dg, geo, sapl, sig_serv):
+    try:
+        importlib.reload(_mod)
+    except Exception:
+        pass
 from utils import (
     META_DIARIA,
     MESES_ALERTA,
