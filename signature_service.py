@@ -35,7 +35,7 @@ def _ler_config() -> dict:
     return {
         "usar_assinatura_visual": True,
         "usar_certificado_a1": False,
-        "incluir_carimbo_icp": True,
+        "incluir_carimbo_icp": False,
         "titular_padrao": "ÍTALO OTÁVIO",
         "cargo_padrao": "Vereador de Boa Vista/RR · Deputado Federal Eleito",
     }
@@ -179,24 +179,41 @@ def remover_certificado_a1() -> bool:
     return True
 
 
+def tem_assinatura_ativa() -> bool:
+    """Retorna True se há imagem de assinatura visual OU certificado ICP-Brasil A1 configurado."""
+    cfg = _ler_config()
+    tem_img = ASSINATURA_IMG_PATH.exists() and cfg.get("usar_assinatura_visual", True)
+    tem_cert = CERTIFICADO_PATH.exists() and cfg.get("usar_certificado_a1", False)
+    return bool(tem_img or tem_cert)
+
+
 # --------------------------------------------------------------------------- #
 # Carimbo Criptográfico de Autenticidade Oficial
 # --------------------------------------------------------------------------- #
 def gerar_carimbo_autenticidade(rua: str, bairro: str, data_doc: date | None = None) -> str:
     """
-    Gera texto oficial de autenticação digital conforme legislação brasileira
-    (MP nº 2.200-2/2001 e Lei Federal nº 14.063/2020 - Assinatura Eletrônica Avançada/Qualificada).
+    Gera texto oficial de autenticação digital conforme legislação brasileira.
+    REGRA FUNDAMENTAL: Se nenhuma assinatura foi anexada/configurada, NÃO gera carimbo ("").
     """
-    d = data_doc or date.today()
-    agora = datetime.now()
     cfg = _ler_config()
     cert_info = obter_info_certificado()
+    tem_cert = cert_info is not None and cfg.get("usar_certificado_a1", False)
+    tem_img = ASSINATURA_IMG_PATH.exists() and cfg.get("usar_assinatura_visual", True)
+
+    # Se o usuário NÃO anexou assinatura nem certificado, NÃO coloca carimbo nenhum!
+    if not tem_cert and not tem_img:
+        return ""
+    if not cfg.get("incluir_carimbo_icp", False):
+        return ""
+
+    d = data_doc or date.today()
+    agora = datetime.now()
 
     semente = f"SIGI|{rua}|{bairro}|{d.isoformat()}|{agora.strftime('%Y%m%d%H%M')}|ITALO_OTAVIO"
     cod_hash = hashlib.sha256(semente.encode()).hexdigest()[:24].upper()
     cod_fmt = f"{cod_hash[0:4]}.{cod_hash[4:8]}.{cod_hash[8:12]}.{cod_hash[12:16]}.{cod_hash[16:20]}.{cod_hash[20:24]}"
 
-    if cert_info and cfg.get("usar_certificado_a1", False):
+    if tem_cert:
         emissor = cert_info.get("emissor", "ICP-Brasil")
         cpf_txt = f" (CPF {cert_info['cpf']})" if cert_info.get("cpf") else ""
         return (
@@ -206,10 +223,11 @@ def gerar_carimbo_autenticidade(rua: str, bairro: str, data_doc: date | None = N
             f"Chave de Verificação Regimental: {cod_fmt} · Validação Oficial no SAPL da CMBV."
         )
 
-    # Carimbo eletrônico avançado institucional do parlamentar
+    # Carimbo institucional avançado (apenas se imagem de assinatura estiver anexada)
     return (
         f"DOCUMENTO ASSINADO ELETRONICAMENTE · GABINETE PARLAMENTAR\n"
         f"Assinado por: ÍTALO OTÁVIO — Vereador de Boa Vista/RR e Deputado Federal Eleito por Roraima.\n"
         f"Fundamentação Legal: MP nº 2.200-2/2001 e Lei Federal nº 14.063/2020.\n"
         f"Chave de Autenticação Digital: {cod_fmt} · Data de Emissão: {agora.strftime('%d/%m/%Y às %H:%M')}."
     )
+

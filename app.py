@@ -933,13 +933,13 @@ with aba_gerar:
 
     # ---- Passo 5: Croqui e Geração em Lote ------------------------------- #
     st.write("")
-    passo_executivo(5, "Mapa Georreferenciado e Geração em Lote")
+    passo_executivo(5, "Mapa Georreferenciado e Localização")
 
     incluir_mapa = st.toggle("📷 Incluir Croqui / Print do Mapa no documento oficial", value=True,
                              help="Gera e insere o print georreferenciado da via com marcador oficial da CMBV.")
 
     if incluir_mapa and selecionadas:
-        with st.expander(f"🗺️ Prévia do Print do Mapa: {exemplo} ({bairro})", expanded=False):
+        with st.expander(f"🗺️ Prévia do Print do Mapa: {exemplo} ({bairro})", expanded=True):
             c_m1, c_m2 = st.columns([2, 1], vertical_alignment="center")
             with c_m1:
                 try:
@@ -948,11 +948,57 @@ with aba_gerar:
                 except Exception as exc:
                     st.caption(f"Prévia do mapa: {exc}")
             with c_m2:
-                st.markdown("**Localização Automática**")
+                st.markdown("**Localização Automática e Precisa**")
                 st.caption(f"O SIGI gera automaticamente este mapa com pin centralizado para cada uma das {len(selecionadas)} via(s) selecionadas.")
-                st.caption("✔️ Sem necessidade de tirar prints manuais um por um.")
-                st.caption("✔️ Inserido certinho no .docx após a justificativa.")
+                st.caption("✔️ Coordenadas georreferenciadas na malha de Boa Vista/RR.")
+                st.caption("✔️ Inserido perfeitamente no .docx após a justificativa.")
 
+    # ---- Passo 6: Assinatura do Parlamentar ------------------------------- #
+    st.write("")
+    passo_executivo(6, "Assinatura do Parlamentar")
+
+    sig_salva = sig_serv.obter_imagem_assinatura()
+    c_s1, c_s2 = st.columns([1.5, 2.5], gap="large")
+
+    with c_s1:
+        tipo_sig = st.radio(
+            "Configuração de Assinatura",
+            [
+                "Nenhuma assinatura (em branco para assinar à caneta)",
+                "Anexar imagem de assinatura / rubrica",
+            ],
+            index=0,
+            key="radio_tipo_sig",
+            help="Se você não anexar nenhuma assinatura, o documento sairá totalmente sem assinatura nem carimbo digital."
+        )
+
+    img_assinatura_final = None
+    usar_carimbo_final = False
+
+    with c_s2:
+        if tipo_sig == "Nenhuma assinatura (em branco para assinar à caneta)":
+            st.info("ℹ️ **Nenhuma assinatura anexada:** Os documentos serão gerados sem qualquer assinatura digital ou carimbo. O documento sairá limpo com o espaço oficial para assinatura física à caneta.")
+            img_assinatura_final = None
+            usar_carimbo_final = False
+        else:
+            if sig_salva:
+                usar_salva = st.checkbox("Usar imagem de assinatura salva no gabinete", value=True, key="chk_usar_salva")
+                if usar_salva:
+                    img_assinatura_final = sig_salva
+                    st.image(sig_salva, width=150, caption="Assinatura cadastrada")
+
+            up_nova_sig = st.file_uploader("Ou anexe uma nova assinatura (.png, .jpg) para este lote",
+                                          type=["png", "jpg", "jpeg"], key="up_sig_tab1")
+            if up_nova_sig is not None:
+                img_assinatura_final = up_nova_sig.getvalue()
+                st.success("✔️ Assinatura visual anexada para esta geração.")
+
+            if img_assinatura_final:
+                usar_carimbo_final = st.toggle("Incluir carimbo institucional de validação no rodapé", value=False, key="tog_carimbo_tab1")
+            else:
+                st.warning("⚠️ Nenhuma imagem de assinatura fornecida. O documento será gerado sem assinatura.")
+
+    st.write("")
     a_gerar = [r for r in selecionadas if not (pular_duplicadas and recente(r))]
     pulo = len(selecionadas) - len(a_gerar)
     g1, g2 = st.columns([1.2, 2], vertical_alignment="center")
@@ -975,7 +1021,13 @@ with aba_gerar:
         itens = [{"rua": r, "bairro": bairro, "tipo_servico": tipo, "justificativa": justificativa_para(r),
                   "data": data_doc, "caixa_alta": caixa_alta} for r in a_gerar]
         try:
-            gerados = dg.gerar_lote(TEMPLATE_PATH, itens, pasta_lote, progresso=atualizar, incluir_mapa=incluir_mapa)
+            gerados = dg.gerar_lote(
+                TEMPLATE_PATH, itens, pasta_lote, progresso=atualizar,
+                incluir_mapa=incluir_mapa,
+                imagem_assinatura=img_assinatura_final,
+                incluir_carimbo=usar_carimbo_final,
+                incluir_bloco_assinatura=True
+            )
             nome_zip = dg.nome_zip_do_dia(OUTPUT_DIR)
             zip_bytes = dg.criar_zip([g["caminho"] for g in gerados])
             (OUTPUT_DIR / nome_zip).write_bytes(zip_bytes)

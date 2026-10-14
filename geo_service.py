@@ -25,7 +25,7 @@ from typing import Callable
 import requests
 from PIL import Image, ImageDraw, ImageFont
 
-from utils import BAIRROS_BOA_VISTA, DATA_DIR, normalizar
+from utils import BAIRROS_BOA_VISTA, DATA_DIR, normalizar, obter_centroide_bairro
 
 CACHE_MAPAS_DIR = DATA_DIR / "cache_mapas"
 
@@ -217,10 +217,14 @@ def _localizar_bairro(nome: str) -> dict:
         return cache[alvo]
     # tolerância: "Dr. Silvio Botelho" x "Silvio Botelho", "Bairro dos Estados" x "Estados"
     for chave, b in cache.items():
-        if alvo.endswith(chave) or chave.endswith(alvo) or alvo in chave or chave in alvo:
+        if alvo == chave or alvo.endswith(chave) or chave.endswith(alvo):
             return b
-    # Ponto de referência do centro geográfico de Boa Vista / RR
-    return {"nome": nome, "rel_ids": [], "ponto": [2.819611, -60.6711632]}
+    for chave, b in cache.items():
+        if len(chave) > 3 and (chave in alvo or alvo in chave):
+            return b
+    # Ponto de referência oficial do centroide consolidado do bairro específico
+    pt = list(obter_centroide_bairro(nome))
+    return {"nome": nome, "rel_ids": [], "ponto": pt}
 
 
 # --------------------------------------------------------------------------- #
@@ -272,6 +276,7 @@ def _buscar_ruas_locais_db(bairro: str) -> list[dict]:
     try:
         from database import _conn
         b_norm = normalizar(bairro)
+        ponto_bairro = list(obter_centroide_bairro(bairro))
         with _conn() as con:
             rows = con.execute(
                 "SELECT DISTINCT rua FROM sapl_materias WHERE (bairro_norm = ? OR bairro_norm LIKE ?) AND rua != ''",
@@ -286,7 +291,7 @@ def _buscar_ruas_locais_db(bairro: str) -> list[dict]:
                         "highway": "residential",
                         "sem_pavimento": False,
                         "trechos": 1,
-                        "ponto": [2.819611, -60.6711632]
+                        "ponto": ponto_bairro
                     })
             saida.sort(key=lambda x: normalizar(x["nome"]))
             return saida
@@ -405,13 +410,18 @@ def gerar_imagem_mapa(lat: float, lon: float, titulo: str = "", subtitulo: str =
 
     def _baixar_tile(dx: int, dy: int):
         tx, ty = tile_x + dx, tile_y + dy
-        url = f"https://tile.openstreetmap.org/{zoom}/{tx}/{ty}.png"
-        try:
-            resp = requests.get(url, headers=headers, timeout=2.0)
-            if resp.status_code == 200:
-                return (dx, dy), Image.open(io.BytesIO(resp.content)).convert("RGB")
-        except Exception:
-            pass
+        urls = [
+            f"https://tile.openstreetmap.org/{zoom}/{tx}/{ty}.png",
+            f"https://a.basemaps.cartocdn.com/rastertiles/voyager/{zoom}/{tx}/{ty}.png",
+            f"https://b.basemaps.cartocdn.com/rastertiles/voyager/{zoom}/{tx}/{ty}.png",
+        ]
+        for u in urls:
+            try:
+                resp = requests.get(u, headers=headers, timeout=2.0)
+                if resp.status_code == 200:
+                    return (dx, dy), Image.open(io.BytesIO(resp.content)).convert("RGB")
+            except Exception:
+                pass
         return (dx, dy), None
 
     sucesso_tiles = 0
@@ -461,24 +471,73 @@ def gerar_imagem_mapa(lat: float, lon: float, titulo: str = "", subtitulo: str =
     return conteudo
 
 
+def _geocodificar_nominatim(rua: str, bairro: str = "") -> tuple[float, float] | None:
+    """Consulta rápida com cache ao serviço oficial de geocodificação do OpenStreetMap para achar a via em Boa Vista/RR."""
+    chave_cache = f"geo_nominatim::{normalizar(rua)}::{normalizar(bairro)}"
+    cached = _cache_get(chave_cache, aceitar_vencido=True)
+    if cached and isinstance(cached, list) and len(cached) == 2:
+        return float(cached[0]), float(cached[1])
+
+    headers = {"User-Agent": "SIGI-CMBV/1.0 (Camara Municipal de Boa Vista - Gabinete Parlamentar)"}
+    consultas = []
+    b_norm = normalizar(bairro)
+    if b_norm and b_norm not in ("centro", "outro", "outros", ""):
+        consultas.append(f"{rua}, {bairro}, Boa Vista, Roraima, Brasil")
+    consultas.append(f"{rua}, Boa Vista, Roraima, Brasil")
+
+    for q in consultas:
+        try:
+            resp = requests.get(
+                "https://nominatim.openstreetmap.org/search",
+                params={"q": q, "format": "json", "limit": 1},
+                headers=headers,
+                timeout=2.2
+            )
+            if resp.status_code == 200:
+                dados = resp.json()
+                if dados:
+                    lat = float(dados[0]["lat"])
+                    lon = float(dados[0]["lon"])
+                    # Garante que as coordenadas estão dentro do município de Boa Vista/RR
+                    if 2.5 <= lat <= 3.2 and -61.1 <= lon <= -60.4:
+                        _cache_set(chave_cache, [lat, lon])
+                        return lat, lon
+        except Exception:
+            pass
+    return None
+
+
 def obter_coordenadas_rua(rua: str, bairro: str) -> tuple[float, float]:
-    """Retorna (lat, lon) de uma rua ou cai de volta para as coordenadas do bairro / Boa Vista."""
-    # 1. Tenta buscar no cache de ruas do bairro
+    """
+    Retorna (lat, lon) georreferenciados precisos para a rua e bairro em Boa Vista/RR.
+    1. Geocodificação precisa em tempo real via Nominatim (OpenStreetMap) buscando na malha de Boa Vista.
+    2. Cache local do bairro por ponto georreferenciado da via.
+    3. Fallback inteligente: Centroide consolidado do próprio BAIRRO (nunca cai no Centro se o bairro for outro).
+    """
     chave_b = normalizar(bairro)
-    cache_ruas = _cache_get(f"ruas::{chave_b}") or []
     chave_r = normalizar(rua)
+    pt_bairro = obter_centroide_bairro(bairro)
+
+    # 1. Geocodificação precisa em tempo real (OpenStreetMap)
+    pt_nom = _geocodificar_nominatim(rua, bairro)
+    if pt_nom:
+        return pt_nom
+
+    # 2. Tenta buscar no cache de ruas do bairro
+    cache_ruas = _cache_get(f"ruas::{chave_b}", aceitar_vencido=True) or []
     for r in cache_ruas:
         if normalizar(r.get("nome", "")) == chave_r and r.get("ponto"):
-            return float(r["ponto"][0]), float(r["ponto"][1])
+            pt = r["ponto"]
+            # Se for bairro fora do Centro, garante que não seja o ponto genérico antigo do centro
+            if chave_b != "centro":
+                pt_centro = (2.819611, -60.6711632)
+                if abs(pt[0] - pt_centro[0]) > 0.002 or abs(pt[1] - pt_centro[1]) > 0.002:
+                    return float(pt[0]), float(pt[1])
+            else:
+                return float(pt[0]), float(pt[1])
 
-    # 2. Tenta buscar nas coordenadas do bairro
-    cache_bairros = _cache_get("bairros") or {}
-    if chave_b in cache_bairros and cache_bairros[chave_b].get("ponto"):
-        p = cache_bairros[chave_b]["ponto"]
-        return float(p[0]), float(p[1])
-
-    # 3. Padrão: Centro de Boa Vista - RR
-    return 2.8235, -60.6758
+    # 3. Fallback: Centroide exato do BAIRRO selecionado (garante que o mapa fique no bairro correto)
+    return pt_bairro
 
 
 def obter_mapa_rua(rua: str, bairro: str, tipo_servico: str = "") -> bytes:
@@ -487,4 +546,5 @@ def obter_mapa_rua(rua: str, bairro: str, tipo_servico: str = "") -> bytes:
     tit = f"Demanda: {tipo_servico} · {rua}" if tipo_servico else rua
     sub = f"Bairro {bairro} — Boa Vista/RR"
     return gerar_imagem_mapa(lat, lon, titulo=tit, subtitulo=sub)
+
 

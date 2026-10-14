@@ -69,6 +69,94 @@ BAIRROS_BOA_VISTA = sorted({
     "Senador Hélio Campos", "Tancredo Neves", "União",
 }, key=normalizar)
 
+# Centroides geográficos consolidados de todos os bairros de Boa Vista / RR
+CENTROIDES_BAIRROS_BOA_VISTA: dict[str, tuple[float, float]] = {
+    "13 de setembro": (2.7985268, -60.6859828),
+    "31 de marco": (2.8382857, -60.6707996),
+    "5 de outubro": (2.8563096, -60.6330428),
+    "aeroporto": (2.8412095, -60.7081436),
+    "alvorada": (2.8193735, -60.7518051),
+    "asa branca": (2.8133925, -60.7214194),
+    "bairro dos estados": (2.8456344, -60.6700971),
+    "bela vista": (2.7708789, -60.72384),
+    "buritis": (2.8149517, -60.7091259),
+    "cacari": (2.849888, -60.6514545),
+    "caimbe": (2.8226526, -60.7168106),
+    "calunga": (2.8054308, -60.6765191),
+    "cambara": (2.8136037, -60.7310263),
+    "canarinho": (2.8345, -60.6582439),
+    "carana": (2.839746, -60.721722),
+    "cauame": (2.8485289, -60.7120887),
+    "centenario": (2.7960596, -60.7124904),
+    "centro": (2.819611, -60.6711632),
+    "cidade satelite": (2.8444229, -60.7465232),
+    "cinturao verde": (2.8039145, -60.7088478),
+    "colina park": (2.9053466, -60.9384909),
+    "distrito industrial": (2.7635135, -60.7144414),
+    "distrito industrial governador aquilino mota duarte": (2.7687546, -60.7118988),
+    "doutor airton rocha": (2.7674016, -60.7572412),
+    "doutor silvio leite": (2.8215119, -60.7416242),
+    "dr airton rocha": (2.7674016, -60.7572412),
+    "dr silvio botelho": (2.8013255, -60.7424217),
+    "dr silvio leite": (2.8215119, -60.7416242),
+    "equatorial": (2.8184254, -60.7664732),
+    "estados": (2.8456052, -60.669641),
+    "jardim carana": (2.8522929, -60.7233396),
+    "jardim das copaibas": (2.761869, -60.7064021),
+    "jardim floresta": (2.8301981, -60.7100944),
+    "jardim primavera": (2.8245869, -60.7344581),
+    "jardim tropical": (2.7946992, -60.7334586),
+    "joao de barro": (2.8629396, -60.7801888),
+    "joquei clube": (2.8046491, -60.7264193),
+    "laura moreira": (2.8005162, -60.7872681),
+    "liberdade": (2.8192364, -60.7005652),
+    "marechal rondon": (2.7919986, -60.6938459),
+    "mecejana": (2.8243788, -60.6876267),
+    "monte cristo": (2.8756224, -60.7111729),
+    "murilo teixeira cidade": (2.8305423, -60.7661792),
+    "nossa senhora aparecida": (2.8379029, -60.6655207),
+    "nova canaa": (2.8150202, -60.7407219),
+    "nova cidade": (2.7650202, -60.730845),
+    "olimpico": (2.8022024, -60.7347069),
+    "operario": (2.7786593, -60.7455088),
+    "paraviana": (2.856586, -60.6591133),
+    "pedra pintada": (2.8822767, -60.6866022),
+    "pintolandia": (2.8067035, -60.7485165),
+    "piscicultura": (2.8351304, -60.735663),
+    "pricuma": (2.8102035, -60.6976568),
+    "prof araceli souto maior": (2.7875362, -60.7242869),
+    "professora araceli souto maior": (2.7875362, -60.7242869),
+    "raiar do sol": (2.7741627, -60.7193381),
+    "residencial flores": (2.7508363, -60.7343683),
+    "residencial primavera": (2.7496524, -60.7371585),
+    "said salomao": (2.8875383, -60.6904574),
+    "santa luzia": (2.8076877, -60.7546758),
+    "santa tereza": (2.8275784, -60.73056),
+    "sao bento": (2.7815558, -60.7151151),
+    "sao francisco": (2.831568, -60.6755466),
+    "sao pedro": (2.8269956, -60.6637205),
+    "sao vicente": (2.8103919, -60.6828635),
+    "senador helio campos": (2.7928175, -60.7533669),
+    "silvio botelho": (2.8013255, -60.7424217),
+    "silvio leite": (2.8256714, -60.740009),
+    "tancredo neves": (2.8232436, -60.7252115),
+    "treze de setembro": (2.7984266, -60.6830477),
+    "uniao": (2.8454504, -60.7292707),
+}
+
+
+def obter_centroide_bairro(nome: str) -> tuple[float, float]:
+    """Retorna o centroide (lat, lon) consolidado de qualquer bairro de Boa Vista/RR."""
+    alvo = normalizar(nome)
+    if alvo in CENTROIDES_BAIRROS_BOA_VISTA:
+        return CENTROIDES_BAIRROS_BOA_VISTA[alvo]
+    for k, v in CENTROIDES_BAIRROS_BOA_VISTA.items():
+        if alvo.endswith(k) or k.endswith(alvo) or (len(k) > 4 and k in alvo):
+            return v
+    # Centro geográfico oficial de Boa Vista (Centro Cívico)
+    return (2.819611, -60.6711632)
+
+
 
 # --------------------------------------------------------------------------- #
 # Datas
