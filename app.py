@@ -9,6 +9,7 @@ Integração Oficial: SAPL (Sistema de Apoio ao Processo Legislativo da CMBV)
 """
 from __future__ import annotations
 
+import base64
 import random
 import shutil
 from datetime import date, datetime
@@ -22,6 +23,14 @@ try:
     importlib.reload(utils)
 except Exception:
     pass
+
+
+@st.cache_data
+def get_image_base64(path_rel: str) -> str:
+    p = utils.BASE_DIR / path_rel
+    if p.exists():
+        return f"data:image/png;base64,{base64.b64encode(p.read_bytes()).decode()}"
+    return ""
 
 import database as db
 import doc_generator as dg
@@ -47,6 +56,7 @@ from utils import (
     gerar_justificativa,
     gerar_texto_solicitacao,
     normalizar,
+    obter_estacao,
 )
 
 st.set_page_config(
@@ -59,462 +69,17 @@ st.set_page_config(
 OUTRO_BAIRRO = "➕ Outro bairro (digitar manualmente)…"
 
 # --------------------------------------------------------------------------- #
-# Design System Oficial: Azul Marinho Institucional & Amarelo Dourado Roraima
 # --------------------------------------------------------------------------- #
-PALETA_CSS = """
+# Design System Oficial: Italo Otavio (Federal por Roraima) e Preline UI
+# --------------------------------------------------------------------------- #
+_CSS_PATH = utils.BASE_DIR / "style.css"
+_CSS_TEXT = _CSS_PATH.read_text(encoding="utf-8") if _CSS_PATH.exists() else ""
+PALETA_CSS = f"""
+<!-- Preline UI e Tailwind CDN -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/preline/dist/preline.min.js"></script>
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap');
-
-html, body, [class*="css"], .stApp {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
-    background-color: #080D1A !important;
-    color: #E2E8F0 !important;
-}
-
-h1, h2, h3, .brand-font {
-    font-family: 'Outfit', sans-serif !important;
-}
-
-.block-container {
-    padding-top: 1.2rem;
-    padding-bottom: 3.5rem;
-    max-width: 1360px;
-}
-
-#MainMenu, footer { visibility: hidden; }
-
-/* Header Institucional de Alto Padrão */
-.gov-header {
-    background: #0D1629;
-    border: 1px solid #1A2847;
-    border-top: 3px solid #F59E0B;
-    border-radius: 14px;
-    padding: 1.5rem 1.8rem;
-    margin-bottom: 1.25rem;
-    box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.4);
-}
-
-.gov-brand-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 3px 10px;
-    border-radius: 6px;
-    font-size: 0.72rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    background: rgba(245, 158, 11, 0.12);
-    color: #FBBF24;
-    border: 1px solid rgba(245, 158, 11, 0.3);
-}
-
-.gov-live-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 3px 10px;
-    border-radius: 6px;
-    font-size: 0.72rem;
-    font-weight: 600;
-    background: rgba(37, 99, 235, 0.15);
-    color: #93C5FD;
-    border: 1px solid rgba(37, 99, 235, 0.3);
-}
-
-.gov-dot-live {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: #10B981;
-    display: inline-block;
-    box-shadow: 0 0 8px #10B981;
-}
-
-.gov-title {
-    margin: 8px 0 2px 0;
-    font-size: 2.1rem;
-    font-weight: 800;
-    letter-spacing: -0.02em;
-    color: #F8FAFC;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
-}
-
-.gov-title-yellow {
-    color: #F59E0B;
-}
-
-.gov-subtitle {
-    margin: 0;
-    font-size: 0.96rem;
-    color: #94A3B8;
-    line-height: 1.5;
-}
-
-.gov-subtitle b {
-    color: #E2E8F0;
-}
-
-.gov-author-credit {
-    font-size: 0.82rem;
-    color: #64748B;
-    margin-top: 4px;
-}
-
-.gov-author-credit span {
-    color: #F59E0B;
-    font-weight: 600;
-}
-
-.gov-btn-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 0.82rem;
-    font-weight: 600;
-    color: #F59E0B;
-    text-decoration: none;
-    background: rgba(245, 158, 11, 0.08);
-    border: 1px solid rgba(245, 158, 11, 0.3);
-    padding: 6px 14px;
-    border-radius: 8px;
-    transition: all 0.2s ease;
-}
-
-.gov-btn-link:hover {
-    background: rgba(245, 158, 11, 0.18);
-    color: #FDE68A;
-    border-color: rgba(245, 158, 11, 0.6);
-    text-decoration: none;
-}
-
-/* Card de Meta Diária com Destaque Dourado & Azul */
-.gov-goal-card {
-    background: #0D1629;
-    border: 1px solid #1E2E50;
-    border-radius: 12px;
-    padding: 1.25rem 1.6rem;
-    margin-bottom: 1.25rem;
-}
-
-.gov-progress-track {
-    height: 14px;
-    background: #15223D;
-    border-radius: 9999px;
-    overflow: hidden;
-    margin: 12px 0;
-    border: 1px solid rgba(255, 255, 255, 0.04);
-}
-
-.gov-progress-fill {
-    height: 100%;
-    border-radius: 9999px;
-    background: linear-gradient(90deg, #F59E0B 0%, #FBBF24 100%);
-    box-shadow: 0 0 14px rgba(245, 158, 11, 0.5);
-    transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.gov-progress-fill.done {
-    background: linear-gradient(90deg, #10B981 0%, #34D399 100%);
-    box-shadow: 0 0 14px rgba(16, 185, 129, 0.5);
-}
-
-/* KPI Cards com Visual Corporativo */
-.gov-stat-card {
-    background: #0D1629;
-    border: 1px solid #1A2847;
-    border-radius: 12px;
-    padding: 1.2rem 1.4rem;
-    transition: all 0.2s ease;
-}
-
-.gov-stat-card:hover {
-    border-color: #2E4370;
-    transform: translateY(-2px);
-}
-
-.gov-stat-label {
-    font-size: 0.72rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: #94A3B8;
-    margin-bottom: 4px;
-}
-
-.gov-stat-val {
-    font-family: 'Outfit', sans-serif !important;
-    font-size: 2.1rem;
-    font-weight: 800;
-    color: #F8FAFC;
-    line-height: 1.15;
-}
-
-.gov-stat-val.gold {
-    color: #F59E0B;
-}
-
-.gov-stat-sub {
-    font-size: 0.8rem;
-    color: #64748B;
-    margin-top: 4px;
-}
-
-/* Stepper Parlamentar */
-.gov-step-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    background: #13203A;
-    border: 1px solid #24355A;
-    padding: 4px 12px 4px 6px;
-    border-radius: 8px;
-    margin-bottom: 12px;
-}
-
-.gov-step-num {
-    width: 22px;
-    height: 22px;
-    border-radius: 6px;
-    background: #F59E0B;
-    color: #080D1A;
-    font-weight: 800;
-    font-size: 0.78rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.gov-step-title {
-    font-size: 0.88rem;
-    font-weight: 700;
-    color: #F1F5F9;
-}
-
-/* Folha de Pré-visualização de Documento Oficial */
-.gov-doc-sheet {
-    background: #0A1122;
-    border: 1px solid #203152;
-    border-left: 4px solid #F59E0B;
-    border-radius: 8px;
-    padding: 18px 22px;
-    font-size: 0.92rem;
-    line-height: 1.6;
-    color: #CBD5E1;
-}
-
-.gov-doc-sheet b {
-    color: #F8FAFC;
-}
-
-/* Botões do Streamlit no Estilo Gabinete */
-.stButton > button[kind="primary"], .stDownloadButton > button[kind="primary"] {
-    background: #F59E0B !important;
-    color: #080D1A !important;
-    font-weight: 700 !important;
-    border: none !important;
-    border-radius: 8px !important;
-    box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3) !important;
-    transition: all 0.15s ease !important;
-}
-
-.stButton > button[kind="primary"]:hover, .stDownloadButton > button[kind="primary"]:hover {
-    background: #FBBF24 !important;
-    box-shadow: 0 4px 14px rgba(245, 158, 11, 0.45) !important;
-    transform: translateY(-1px) !important;
-}
-
-.stButton > button, .stDownloadButton > button {
-    border-radius: 8px !important;
-    border: 1px solid #24355A !important;
-    background-color: #111C33 !important;
-    color: #E2E8F0 !important;
-    font-weight: 500 !important;
-}
-
-.stButton > button:hover {
-    border-color: #3B82F6 !important;
-    color: #FFFFFF !important;
-}
-
-/* Tabs Elegantes */
-.stTabs [data-baseweb="tab-list"] {
-    gap: 8px;
-    border-bottom: 1px solid #1A2847;
-}
-
-.stTabs [data-baseweb="tab"] {
-    border-radius: 8px 8px 0 0;
-    padding: 10px 18px;
-    font-weight: 600;
-    color: #94A3B8;
-    border: none;
-}
-
-.stTabs [aria-selected="true"] {
-    color: #F59E0B !important;
-    border-bottom: 2px solid #F59E0B !important;
-    background: rgba(245, 158, 11, 0.05);
-}
-
-/* Sidebar Executiva */
-section[data-testid="stSidebar"] {
-    background-color: #0B1222 !important;
-    border-right: 1px solid #1A2847 !important;
-}
-
-.sidebar-brand-card {
-    background: #111C33;
-    border: 1px solid #1E2E50;
-    border-left: 3px solid #F59E0B;
-    border-radius: 10px;
-    padding: 14px;
-    margin-bottom: 12px;
-}
-
-.gov-action-box {
-    background: #0D1629;
-    border: 1px solid #1E2E4E;
-    border-radius: 12px;
-    padding: 1.2rem;
-    margin-bottom: 1.2rem;
-}
-
-.gov-badge-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 3px 10px;
-    border-radius: 9999px;
-    font-size: 0.76rem;
-    font-weight: 700;
-}
-
-.gov-badge-green {
-    background: rgba(16, 185, 129, 0.15);
-    color: #34D399;
-    border: 1px solid rgba(16, 185, 129, 0.3);
-}
-
-.gov-badge-amber {
-    background: rgba(245, 158, 11, 0.15);
-    color: #FBBF24;
-    border: 1px solid rgba(245, 158, 11, 0.3);
-}
-
-.gov-badge-blue {
-    background: rgba(37, 99, 235, 0.15);
-    color: #60A5FA;
-    border: 1px solid rgba(37, 99, 235, 0.3);
-}
-
-/* Rodapé Institucional */
-.gov-footer {
-    border-top: 1px solid #1A2847;
-    margin-top: 3.5rem;
-    padding-top: 1.5rem;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 14px;
-    color: #64748B;
-    font-size: 0.84rem;
-}
-
-.gov-footer a {
-    color: #F59E0B;
-    text-decoration: none;
-    font-weight: 600;
-}
-
-.gov-footer a:hover {
-    text-decoration: underline;
-}
-
-/* ------------------------------------------------------------------------- */
-/* Responsividade e Adaptação para Celulares (iPhone iOS e Android)          */
-/* ------------------------------------------------------------------------- */
-@media (max-width: 768px) {
-    .block-container {
-        padding-top: 0.5rem !important;
-        padding-bottom: 2.5rem !important;
-        padding-left: 0.65rem !important;
-        padding-right: 0.65rem !important;
-    }
-
-    .gov-header {
-        padding: 1.1rem 0.9rem !important;
-        border-radius: 10px !important;
-        margin-bottom: 0.85rem !important;
-    }
-
-    .gov-title {
-        font-size: 1.38rem !important;
-        line-height: 1.25 !important;
-        gap: 6px !important;
-    }
-
-    .gov-subtitle {
-        font-size: 0.84rem !important;
-        line-height: 1.38 !important;
-    }
-
-    .gov-author-credit {
-        font-size: 0.78rem !important;
-    }
-
-    .gov-stat-card {
-        padding: 0.85rem 0.95rem !important;
-        margin-bottom: 0.5rem !important;
-    }
-
-    .gov-stat-val {
-        font-size: 1.55rem !important;
-    }
-
-    .gov-goal-card {
-        padding: 0.95rem 1rem !important;
-    }
-
-    /* Tabs horizontais com rolagem suave no celular */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 4px !important;
-        overflow-x: auto !important;
-        flex-wrap: nowrap !important;
-        -webkit-overflow-scrolling: touch !important;
-        padding-bottom: 4px !important;
-        border-bottom: 1px solid #1A2847 !important;
-    }
-
-    .stTabs [data-baseweb="tab"] {
-        padding: 8px 12px !important;
-        font-size: 0.82rem !important;
-        white-space: nowrap !important;
-        flex-shrink: 0 !important;
-    }
-
-    /* Botões confortáveis para o polegar no celular */
-    .stButton > button, .stDownloadButton > button {
-        min-height: 46px !important;
-        font-size: 0.94rem !important;
-        width: 100% !important;
-    }
-
-    .gov-doc-sheet {
-        padding: 12px 14px !important;
-        font-size: 0.84rem !important;
-        word-break: break-word !important;
-    }
-
-    /* Ajuste de formulários e inputs para toque */
-    div[data-baseweb="select"] {
-        min-height: 44px !important;
-    }
-}
+{_CSS_TEXT}
 </style>
 """
 st.markdown(PALETA_CSS, unsafe_allow_html=True)
@@ -567,13 +132,13 @@ def barra_meta_executiva(feitas: int, meta: int) -> None:
     pct = min(feitas / meta, 1.0) * 100
     restante = max(meta - feitas, 0)
     classe = "gov-progress-fill done" if feitas >= meta else "gov-progress-fill"
-    
+
     st.markdown(
         f"""
         <div class="gov-goal-card">
             <div style="display:flex; justify-content:space-between; align-items:baseline;">
                 <div>
-                    <span style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.08em; font-weight:700; color:#F59E0B;">
+                    <span style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.08em; font-weight:700; color:#FF5500;">
                         Painel de Controle Diário · {data_por_extenso()}
                     </span>
                     <div style="font-size:1.85rem; font-weight:800; color:#F8FAFC; margin-top:2px;">
@@ -581,8 +146,8 @@ def barra_meta_executiva(feitas: int, meta: int) -> None:
                     </div>
                 </div>
                 <div>
-                    <span style="display:inline-flex; align-items:center; gap:6px; padding:4px 12px; border-radius:6px; font-size:0.78rem; font-weight:700; background:rgba(245,158,11,0.15); color:#FBBF24; border:1px solid rgba(245,158,11,0.3);">
-                        {pct:.0f}% da cota diária
+                    <span style="display:inline-flex; align-items:center; gap:6px; padding:4px 12px; border-radius:6px; font-size:0.78rem; font-weight:800; background:rgba(255,85,0,0.18); color:#FFAA55; border:1px solid rgba(255,85,0,0.4);">
+                        {pct:.0f}% da meta diária
                     </span>
                 </div>
             </div>
@@ -590,8 +155,8 @@ def barra_meta_executiva(feitas: int, meta: int) -> None:
                 <div class="{classe}" style="width:{pct:.1f}%;"></div>
             </div>
             <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.84rem; color:#94A3B8;">
-                <span>{("🎉 Cota diária de 20 indicações atingida com êxito!" if restante == 0 else f"Restam <b>{restante}</b> indicação(ões) para completar a meta do dia.")}</span>
-                <span style="color:#64748B; font-size:0.8rem;">Regimento da CMBV</span>
+                <span>{(f"🎉 Meta diária de {meta} indicações atingida com êxito!" if restante == 0 else f"Restam <b>{restante}</b> indicação(ões) para completar a meta do dia.")}</span>
+                <span style="color:#64748B; font-size:0.8rem;">Gabinete Ítalo Otávio · CMBV</span>
             </div>
         </div>
         """,
@@ -641,24 +206,38 @@ gerado_hoje = db.contar_por_data()
 total_sapl_cadastrado = db.total_sapl()
 
 with st.sidebar:
+    foto_avatar = get_image_base64("templates/assets/italo_avatar_clean.png")
+    avatar_html = f'<img src="{foto_avatar}" style="width:62px; height:62px; border-radius:50%; object-fit:cover; border:2.5px solid #FFE500; box-shadow:0 0 14px rgba(255,229,0,0.45); flex-shrink:0;" alt="Ítalo Otávio" />' if foto_avatar else ''
+
     st.markdown(
-        """
+        f"""
         <div class="sidebar-brand-card">
-            <div style="font-size:0.68rem; font-weight:700; color:#F59E0B; text-transform:uppercase; letter-spacing:0.1em; margin-bottom:2px;">
-                Gabinete Parlamentar
+            <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
+                {avatar_html}
+                <div>
+                    <div style="font-size:0.68rem; font-weight:800; color:#FFE500; text-transform:uppercase; letter-spacing:0.12em; line-height:1.2;">
+                        FEDERAL POR RORAIMA
+                    </div>
+                    <div style="font-size:1.3rem; font-weight:900; color:#F8FAFC; line-height:1.15; letter-spacing:-0.02em;">
+                        ÍTALO OTÁVIO
+                    </div>
+                    <div style="font-size:0.72rem; font-weight:700; color:#FFAA55; text-transform:uppercase; letter-spacing:0.04em;">
+                        Atitude para Transformar!
+                    </div>
+                </div>
             </div>
-            <div style="font-size:1.25rem; font-weight:800; color:#F8FAFC; line-height:1.2;">
-                Ítalo Otávio
-            </div>
-            <div style="font-size:0.8rem; color:#94A3B8; margin-top:4px; line-height:1.4;">
-                Vereador de Boa Vista / RR<br>
-                <b style="color:#FBBF24;">Deputado Federal Eleito por Roraima</b>
+            <div style="font-size:0.8rem; color:#94A3B8; line-height:1.45; border-top:1px solid rgba(255,255,255,0.08); padding-top:8px;">
+                Gabinete Parlamentar · CMBV<br>
+                <b style="color:#FFE500;">Deputado Federal Eleito por Roraima</b>
             </div>
             <div style="margin-top:12px; display:flex; flex-direction:column; gap:6px;">
-                <a href="https://italootavio.com.br/" target="_blank" class="gov-btn-link" style="justify-content:center;">
+                <a href="https://italootavio.com.br/" target="_blank" class="gov-btn-link-brand" style="justify-content:center;">
                     🌐 italootavio.com.br ↗
                 </a>
-                <a href="https://sapl.boavista.rr.leg.br/materia/pesquisar-materia?tipo=8&autoria__autor=70" target="_blank" class="gov-btn-link" style="justify-content:center; background:rgba(37,99,235,0.12); color:#60A5FA; border-color:rgba(37,99,235,0.3);">
+                <a href="https://www.instagram.com/italootavio" target="_blank" class="gov-btn-link-insta" style="justify-content:center;">
+                    📸 @italootavio no Instagram ↗
+                </a>
+                <a href="https://sapl.boavista.rr.leg.br/materia/pesquisar-materia?tipo=8&autoria__autor=70" target="_blank" class="gov-btn-link-blue" style="justify-content:center;">
                     🏛️ Acervo SAPL Câmara ↗
                 </a>
             </div>
@@ -667,32 +246,49 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
-    st.markdown(
-        """
-        <div class="sidebar-brand-card" style="border-left-color:#3B82F6; background:#0D1629;">
-            <div style="font-size:0.68rem; font-weight:700; color:#64748B; text-transform:uppercase; letter-spacing:0.08em;">
-                Engenharia de Software
-            </div>
-            <div style="font-size:0.95rem; font-weight:700; color:#F1F5F9; margin-top:2px;">
-                Valbert Breno
-            </div>
-            <div style="font-size:0.76rem; color:#94A3B8;">
-                Criador & Desenvolvedor do SIGI
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
     st.divider()
 
-    st.markdown("**Parâmetros do Documento**")
+    st.markdown("**🎯 Meta & Parâmetros do Documento**")
+    meta_diaria = st.number_input(
+        "Meta diária de indicações",
+        min_value=1,
+        max_value=200,
+        value=int(ss.get("meta_diaria", 20)),
+        step=5,
+        key="input_meta_diaria",
+        help="Defina a meta diária (você pode produzir mais de 20 indicações por dia livremente)."
+    )
+    ss["meta_diaria"] = meta_diaria
+
     caixa_alta = st.toggle("Texto legislativo em CAIXA ALTA", value=True,
                            help="Padronização regimental do SAPL da Câmara Municipal.")
     data_doc = st.date_input("Data da Sessão ({{DATA}})", value=date.today(), format="DD/MM/YYYY")
     st.caption(f"Impresso: **{data_por_extenso(data_doc)}**")
     pular_duplicadas = st.toggle(f"Ignorar ruas atendidas nos últimos {MESES_ALERTA} meses", value=False,
                                  help="Cruza os dados locais e o acervo oficial do SAPL para evitar indicações repetidas.")
+
+    st.divider()
+    est_cod_auto, est_rotulo_auto, est_desc_auto = obter_estacao(data_doc)
+    st.markdown("**🌤️ Clima / Sazonalidade (Boa Vista - RR)**")
+    opcao_clima = st.selectbox(
+        "Sazonalidade Climática",
+        [
+            f"⚡ Automático: {est_rotulo_auto}",
+            "☀️ Verão / Estiagem (Clima Seco)",
+            "🌧️ Inverno / Período Chuvoso",
+        ],
+        index=0,
+        key="sb_opcao_clima",
+        help="No Verão (Seco), as justificativas focam em poeira, asfalto ressecado, calor e risco de queimadas (sem citar chuvas). No Inverno, focam em poças, enxurradas e retenção de água."
+    )
+    if "Verão" in opcao_clima:
+        estacao_ativa = "verao"
+    elif "Inverno" in opcao_clima:
+        estacao_ativa = "inverno"
+    else:
+        estacao_ativa = "auto"
+
+    st.caption(f"Contexto: {est_desc_auto}")
 
     st.divider()
     ok_t = analisar_template_cache(TEMPLATE_PATH.stat().st_mtime)
@@ -702,54 +298,84 @@ with st.sidebar:
             st.caption(f"🖼️ Imagens: {ok_t.get('imagens_cabecalho', 0)} no cabeçalho · {ok_t.get('imagens_rodape', 0)} no rodapé")
     else:
         st.success("Modelo Oficial Validado ✔")
-    st.caption(f"Meta diária estabelecida: **{META_DIARIA}** indicações")
+    st.caption(f"Meta de produção diária: **{meta_diaria}** indicações")
 
 
 # --------------------------------------------------------------------------- #
-# Header Institucional & Barra de Cota
+# Hero Capa Oficial Ítalo Otávio & Barra de Cota
 # --------------------------------------------------------------------------- #
+badge_clima_classe = "gov-season-badge-verao" if (estacao_ativa == "verao" or (estacao_ativa == "auto" and est_cod_auto == "verao")) else "gov-season-badge-inverno"
+badge_clima_texto = "☀️ Verão / Estiagem (Seco)" if (estacao_ativa == "verao" or (estacao_ativa == "auto" and est_cod_auto == "verao")) else "🌧️ Inverno (Chuvoso)"
+
+foto_hero = get_image_base64("templates/assets/italo_hero_photo.png")
+foto_hero_html = f'''
+<div class="gov-photo-card">
+    <img src="{foto_hero}" class="gov-photo-img" alt="Deputado Ítalo Otávio" />
+    <div class="gov-photo-badge">
+        <span class="gov-dot-live"></span> Ítalo Otávio · @italootavio
+    </div>
+</div>
+''' if foto_hero else ''
+
 st.markdown(
     f"""
-    <div class="gov-header">
-        <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
-            <div>
-                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                    <span class="gov-brand-badge">
-                        Gabinete Oficial
+    <div class="gov-hero-cover">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:24px;">
+            <div style="flex:1; min-width:320px;">
+                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
+                    <span class="gov-federal-badge">
+                        FEDERAL POR RORAIMA
+                    </span>
+                    <span class="gov-slogan-badge">
+                        ATITUDE PARA TRANSFORMAR!
                     </span>
                     <span class="gov-live-badge">
-                        <span class="gov-dot-live"></span> SAPL Conectado ({total_sapl_cadastrado} matérias no acervo)
+                        <span class="gov-dot-live"></span> SAPL Conectado ({total_sapl_cadastrado} matérias)
                     </span>
                     <span class="gov-live-badge">
-                        <span class="gov-dot-live"></span> OpenStreetMap Boa Vista Ativo
+                        <span class="gov-dot-live"></span> OpenStreetMap Boa Vista
+                    </span>
+                    <span class="{badge_clima_classe}">
+                        {badge_clima_texto}
                     </span>
                 </div>
                 <div class="gov-title">
-                    SIGI <span class="gov-title-yellow">·</span> Sistema Inteligente de Geração de Indicações
+                    <span class="brand-italo">ÍTALO</span>
+                    <span class="brand-otavio">OTÁVIO</span>
+                    <span class="brand-sigi-badge">SIGI</span>
+                </div>
+                <div class="gov-hero-tagline">
+                    #TrabalhoPorRoraima · Atitude para Transformar!
+                </div>
+                <div class="brand-tricolor-bar">
+                    <div class="bar-yellow"></div>
+                    <div class="bar-blue"></div>
+                    <div class="bar-orange"></div>
                 </div>
                 <div class="gov-subtitle">
-                    Gabinete Parlamentar de <b>Ítalo Otávio</b> — Vereador de Boa Vista / RR e Deputado Federal Eleito por Roraima.<br>
-                    Automação e auditoria para cumprimento da cota diária de infraestrutura urbana na Câmara Municipal.
+                    Sistema Inteligente de Geração de Indicações Legislativas · <b>Câmara Municipal de Boa Vista – RR</b><br>
+                    Gabinete Parlamentar · Automação institucional de alto padrão, auditoria cartográfica por satélite e integração oficial SAPL.
                 </div>
-                <div class="gov-author-credit">
-                    Criado e desenvolvido por <span>Valbert Breno</span>
+                <div style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap;">
+                    <a href="https://italootavio.com.br/" target="_blank" class="gov-btn-link-brand">
+                        🌐 italootavio.com.br ↗
+                    </a>
+                    <a href="https://www.instagram.com/italootavio" target="_blank" class="gov-btn-link-insta">
+                        📸 @italootavio ↗
+                    </a>
+                    <a href="https://sapl.boavista.rr.leg.br/materia/pesquisar-materia?tipo=8&autoria__autor=70" target="_blank" class="gov-btn-link-blue">
+                        🏛️ Acervo SAPL Câmara ↗
+                    </a>
                 </div>
             </div>
-            <div style="align-self:center; display:flex; gap:8px; flex-wrap:wrap;">
-                <a href="https://italootavio.com.br/" target="_blank" class="gov-btn-link">
-                    🌐 italootavio.com.br ↗
-                </a>
-                <a href="https://sapl.boavista.rr.leg.br/materia/pesquisar-materia?tipo=8&autoria__autor=70" target="_blank" class="gov-btn-link" style="color:#60A5FA; border-color:rgba(59,130,246,0.3); background:rgba(37,99,235,0.08);">
-                    🏛️ SAPL Câmara ↗
-                </a>
-            </div>
+            {foto_hero_html}
         </div>
     </div>
     """,
     unsafe_allow_html=True,
 )
 
-barra_meta_executiva(gerado_hoje, META_DIARIA)
+barra_meta_executiva(gerado_hoje, meta_diaria)
 st.write("")
 
 aba_gerar, aba_sapl, aba_dash, aba_hist, aba_conf = st.tabs(
@@ -768,17 +394,17 @@ with aba_gerar:
                            mime="application/zip", type="primary", width="stretch",
                            key="dl_zip")
 
-        with st.expander("📂 Baixar Documentos Separadamente (Indicações Individuais)", expanded=True):
-            st.markdown("Cada indicação foi gerada como um **documento individual** pronto para protocolo ou envio:")
+        with st.expander("📂 Baixar Documentos Separadamente (Indicações 1 a N)", expanded=True):
+            st.markdown("Cada indicação foi gerada como um **documento individual numerado de 1 até a quantidade pedida**:")
             pasta_p = Path(lote["pasta"])
             for idx_arq, arq_nome in enumerate(lote["arquivos"], start=1):
                 c_arq = pasta_p / arq_nome
                 if c_arq.exists():
                     cd1, cd2 = st.columns([3, 1.3], vertical_alignment="center")
                     with cd1:
-                        st.markdown(f"📄 **{arq_nome}**")
+                        st.markdown(f"📄 Indicação **#{idx_arq:02d}** · `{arq_nome}`")
                     with cd2:
-                        st.download_button(f"⬇️ Baixar #{idx_arq:02d}",
+                        st.download_button(f"⬇️ Baixar {arq_nome}",
                                            data=c_arq.read_bytes(),
                                            file_name=arq_nome,
                                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -789,24 +415,33 @@ with aba_gerar:
 
     col_a, col_b = st.columns(2, gap="large")
 
-    # ---- Passo 1: Bairro -------------------------------------------------- #
+    # ---- Passo 1: Bairros (Múltipla Seleção) ------------------------------ #
     with col_a:
-        passo_executivo(1, "Bairro de Boa Vista - RR")
+        passo_executivo(1, "Bairros de Boa Vista - RR (Múltipla Seleção)")
         bairros, origem = carregar_bairros()
-        opcoes_bairro = bairros + [OUTRO_BAIRRO]
-        idx = bairros.index("Centro") if "Centro" in bairros else 0
-        escolha = st.selectbox("Selecione o Bairro", opcoes_bairro, index=idx, key="bairro_sel",
-                               label_visibility="collapsed")
-        if escolha == OUTRO_BAIRRO:
-            bairro = st.text_input("Digite o nome do bairro", key="bairro_livre").strip()
-        else:
-            bairro = escolha
+        bairros_padrao = ["Centro"] if "Centro" in bairros else ([bairros[0]] if bairros else [])
+        bairros_selecionados = st.multiselect(
+            "Selecione um ou mais bairros:",
+            options=bairros,
+            default=bairros_padrao,
+            key="bairros_multi_sel",
+            placeholder="Escolha quantos bairros desejar (ex: Centro, Pintolândia, Cauamé...)",
+            help="Você pode escolher quantos bairros quiser! O lote distribuirá as indicações entre todos eles."
+        )
+
+        with st.expander("➕ Adicionar outro bairro manualmente"):
+            f_b1, f_b2 = st.columns([3, 1], vertical_alignment="bottom")
+            novo_bairro = f_b1.text_input("Nome do bairro", placeholder="Ex.: Senador Hélio Campos", key="input_bairro_extra").strip()
+            if f_b2.button("Adicionar Bairro", key="btn_add_bairro_extra") and novo_bairro:
+                if novo_bairro not in bairros_selecionados:
+                    bairros_selecionados.append(novo_bairro)
+                    st.rerun()
 
         r1, r2 = st.columns([3, 1], vertical_alignment="center")
         r1.caption({"osm": "🌐 OpenStreetMap ao vivo (Boa Vista/RR)",
                     "cache": "💾 Banco Geográfico Consolidado (Boa Vista/RR)",
                     "lista local": "🏛️ Catálogo Oficial de Bairros (Boa Vista/RR)"}.get(origem, "🏛️ Boa Vista/RR"))
-        if r2.button("↻ Atualizar", help="Recarregar vias do OSM", key="btn_bairros"):
+        if r2.button("↻ Atualizar", help="Recarregar bairros do OSM", key="btn_bairros"):
             carregar_bairros(forcar=True)
             st.rerun()
 
@@ -814,103 +449,195 @@ with aba_gerar:
     with col_b:
         passo_executivo(2, "Tipo de Demanda / Infraestrutura")
         tipo = st.selectbox("Tipo de Demanda", TIPOS_SERVICO, key="tipo_sel", label_visibility="collapsed")
-        st.caption("A fundamentação técnica é montada automaticamente conforme os padrões aprovados pelo gabinete.")
+        st.caption("A fundamentação técnica é calibrada automaticamente conforme o clima de Roraima (Verão seco x Inverno chuvoso).")
 
     st.write("")
-    passo_executivo(3, "Mapeamento e Seleção de Vias")
-
-    if not bairro:
-        st.info("Informe um bairro para visualizar as ruas mapeadas.")
+    if not bairros_selecionados:
+        st.warning("⚠️ Selecione pelo menos um bairro acima para mapear as vias.")
         st.stop()
 
-    dados_ruas = carregar_ruas(bairro)
-    chave_sel = f"sel::{normalizar(bairro)}"
-    ruas_osm = {r["nome"]: r for r in dados_ruas["ruas"]}
-    manuais = ss["manuais"].setdefault(normalizar(bairro), [])
-    todas = list(dict.fromkeys(list(ruas_osm.keys()) + manuais))
-    todas.sort(key=normalizar)
+    passo_executivo(3, f"Mapeamento e Seleção de Vias ({len(bairros_selecionados)} Bairro(s) Selecionado(s))")
 
-    if dados_ruas.get("erro") and not todas:
-        st.warning(f"Aviso OpenStreetMap: {dados_ruas['erro']}. Você pode adicionar ruas manualmente.")
-    elif not todas:
-        st.info("ℹ️ Nenhuma via encontrada automaticamente para este bairro. Digite as vias no campo abaixo para adicioná-las.")
+    todas_vias_dict = {}
+    contagem_por_bairro = {}
+    for b in bairros_selecionados:
+        dados_ruas = carregar_ruas(b)
+        manuais_b = ss["manuais"].setdefault(normalizar(b), [])
+        ruas_osm_b = {r["nome"]: r for r in dados_ruas.get("ruas", [])}
+        contagem_por_bairro[b] = len(ruas_osm_b) + len(manuais_b)
+        for r_nome, r_info in ruas_osm_b.items():
+            chave = f"{r_nome} — [{b}]"
+            todas_vias_dict[chave] = {
+                "rua": r_nome,
+                "bairro": b,
+                "sem_pavimento": r_info.get("sem_pavimento", False),
+                "ponto": r_info.get("ponto"),
+                "manual": False,
+            }
+        for rm in manuais_b:
+            chave = f"{rm} — [{b}]"
+            if chave not in todas_vias_dict:
+                todas_vias_dict[chave] = {
+                    "rua": rm,
+                    "bairro": b,
+                    "sem_pavimento": False,
+                    "ponto": None,
+                    "manual": True,
+                }
+
+    todas_chaves = sorted(todas_vias_dict.keys(), key=normalizar)
 
     # Cruzamento com o SAPL e SIGI
     recentes = db.mapa_recentes(tipo)
-    bairro_n = normalizar(bairro)
 
-    def recente(rua: str):
-        return recentes.get((normalizar(rua), bairro_n))
+    def recente_chave(ch: str):
+        v = todas_vias_dict.get(ch)
+        if not v:
+            return None
+        return recentes.get((normalizar(v["rua"]), normalizar(v["bairro"])))
 
-    def rotulo(rua: str) -> str:
+    def rotulo_chave(ch: str) -> str:
+        v = todas_vias_dict.get(ch, {})
         sufixo = ""
-        info = ruas_osm.get(rua)
-        if info and info.get("sem_pavimento"):
+        if v.get("sem_pavimento"):
             sufixo += "  🟤 sem asfalto"
-        if rua in manuais and rua not in ruas_osm:
+        if v.get("manual"):
             sufixo += "  ✍️ manual"
-        r = recente(rua)
-        if r:
-            fonte = r.get("fonte", "SIGI")
-            sufixo += f"  ⚠️ já indicada ({fonte} em {fmt_data_br(r['data'])})"
-        return rua + sufixo
+        rec = recente_chave(ch)
+        if rec:
+            fonte = rec.get("fonte", "SIGI")
+            sufixo += f"  ⚠️ já indicada ({fonte} em {fmt_data_br(rec['data'])})"
+        return ch + sufixo
 
-    m1, m2, m3, m4 = st.columns([1.1, 1.3, 0.8, 1], vertical_alignment="bottom")
-    qtd_sug = m1.number_input("Qtd. a sugerir", 1, META_DIARIA,
-                              value=min(max(META_DIARIA - gerado_hoje, 1), META_DIARIA), key="qtd_sug")
+    m1, m2, m3, m4 = st.columns([1.1, 1.4, 0.8, 1], vertical_alignment="bottom")
+    meta_atual = int(ss.get("meta_diaria", 20))
+    val_sug_padrao = min(max(meta_atual - gerado_hoje, 1), meta_atual)
+    qtd_sug = m1.number_input("Qtd. a sugerir", 1, max(meta_atual, 150),
+                              value=val_sug_padrao, key="qtd_sug")
 
-    def sugerir() -> None:
-        livres = [r for r in todas if not recente(r)]
-        rnd = random.Random(f"{bairro_n}|{tipo}|{date.today().isoformat()}")
-        rnd.shuffle(livres)
-        ss[chave_sel] = sorted(livres[: int(ss["qtd_sug"])], key=normalizar)
+    def sugerir_vias_multibairro() -> None:
+        livres_por_b = {b: [] for b in bairros_selecionados}
+        for ch in todas_chaves:
+            if not recente_chave(ch):
+                livres_por_b[todas_vias_dict[ch]["bairro"]].append(ch)
 
-    m2.button("🎯 Sugerir Vias sem Repetição", on_click=sugerir, width="stretch", disabled=not todas)
-    m3.button("Limpar", on_click=lambda: ss.__setitem__(chave_sel, []), width="stretch")
+        rnd = random.Random(f"{','.join(bairros_selecionados)}|{tipo}|{date.today().isoformat()}")
+        for b in bairros_selecionados:
+            rnd.shuffle(livres_por_b[b])
+
+        qtd_total = int(ss["qtd_sug"])
+        escolhidas = []
+        bairros_com_vias = [b for b in bairros_selecionados if livres_por_b[b]]
+        if bairros_com_vias:
+            while len(escolhidas) < qtd_total and any(livres_por_b[b] for b in bairros_com_vias):
+                for b in bairros_com_vias:
+                    if livres_por_b[b] and len(escolhidas) < qtd_total:
+                        escolhidas.append(livres_por_b[b].pop(0))
+        ss["chaves_sel_armazenadas"] = sorted(escolhidas, key=normalizar)
+
+    m2.button("🎯 Sugerir Vias sem Repetição", on_click=sugerir_vias_multibairro, width="stretch", disabled=not todas_chaves)
+    m3.button("Limpar", on_click=lambda: ss.__setitem__("chaves_sel_armazenadas", []), width="stretch")
     if m4.button("↻ Recarregar OSM", width="stretch"):
-        carregar_ruas(bairro, forcar=True)
+        for b in bairros_selecionados:
+            carregar_ruas(b, forcar=True)
         st.rerun()
 
-    if todas:
-        n_osm = len(ruas_osm)
-        st.caption(f"{len(todas)} vias mapeadas ({n_osm} pelo OpenStreetMap"
-                   f"{', ' + str(len(manuais)) + ' manuais' if manuais else ''}) · "
-                   f"⚠️ = verificada contra histórico local e acervo oficial do SAPL")
+    if todas_chaves:
+        resumo_bairros = ", ".join(f"{b}: {contagem_por_bairro[b]} vias" for b in bairros_selecionados)
+        st.caption(f"{len(todas_chaves)} vias mapeadas no total ({resumo_bairros}) · "
+                   f"⚠️ = verificada contra acervo do SAPL e histórico local")
 
-    ss.setdefault(chave_sel, [])
-    if ss.pop("_limpar_sel", None) == chave_sel:
-        ss[chave_sel] = []
-    ss[chave_sel] = [r for r in ss[chave_sel] if r in todas]
+    ss.setdefault("chaves_sel_armazenadas", [])
+    if ss.pop("_limpar_sel", None):
+        ss["chaves_sel_armazenadas"] = []
+    ss["chaves_sel_armazenadas"] = [c for c in ss["chaves_sel_armazenadas"] if c in todas_chaves]
 
-    selecionadas = st.multiselect(
-        f"Selecione as vias do lote (até {META_DIARIA})", options=todas, key=chave_sel, format_func=rotulo,
-        max_selections=META_DIARIA, placeholder="Pesquise por Rua, Avenida, Travessa...",
+    selecionadas_chaves = st.multiselect(
+        f"Selecione as vias do lote (Permitido mais de 20 por dia · Meta atual: {meta_atual})",
+        options=todas_chaves,
+        key="chaves_sel_armazenadas",
+        format_func=rotulo_chave,
+        placeholder="Pesquise por Rua, Avenida, Travessa, Bairro..."
     )
 
-    with st.form("form_manual", clear_on_submit=True, border=False):
-        f1, f2 = st.columns([4, 1], vertical_alignment="bottom")
-        nova = f1.text_input("Não encontrou no mapa? Adicione a via manualmente",
-                             placeholder="Ex.: Rua Moisés Teixeira Hausen")
-        if f2.form_submit_button("Adicionar Via", width="stretch") and nova.strip():
-            nome = " ".join(nova.strip().split())
-            if nome not in manuais:
-                manuais.append(nome)
-            ss[chave_sel] = list(dict.fromkeys(ss.get(chave_sel, []) + [nome]))[:META_DIARIA]
+    with st.form("form_manual_multi", clear_on_submit=True, border=False):
+        f1, f2, f3 = st.columns([3, 2, 1.2], vertical_alignment="bottom")
+        nova = f1.text_input("Não encontrou no mapa? Adicione a via", placeholder="Ex.: Rua Moisés Teixeira Hausen")
+        bairro_da_nova = f2.selectbox("Bairro correspondente", bairros_selecionados, index=0)
+        if f3.form_submit_button("Adicionar Via", width="stretch") and nova.strip():
+            nome_limpo = " ".join(nova.strip().split())
+            mb = ss["manuais"].setdefault(normalizar(bairro_da_nova), [])
+            if nome_limpo not in mb:
+                mb.append(nome_limpo)
+            nova_chave = f"{nome_limpo} — [{bairro_da_nova}]"
+            ss["chaves_sel_armazenadas"] = list(dict.fromkeys(ss.get("chaves_sel_armazenadas", []) + [nova_chave]))
             st.rerun()
 
-    # ---- Alerta de Duplicidade com Link do SAPL ---------------------------- #
-    duplicadas = {r: recente(r) for r in selecionadas if recente(r)}
+    # ---- Alerta de Duplicidade -------------------------------------------- #
+    duplicadas = {ch: recente_chave(ch) for ch in selecionadas_chaves if recente_chave(ch)}
     if duplicadas:
-        def _linha(rua: str, info: dict) -> str:
+        def _linha(ch: str, info: dict) -> str:
             fonte = info.get("fonte", "SIGI")
-            return f"- **{rua}** — {tipo} já indicado via **{fonte}** em **{fmt_data_br(info['data'])}**"
+            return f"- **{ch}** — {tipo} já indicado via **{fonte}** em **{fmt_data_br(info['data'])}**"
 
-        linhas = "\n".join(_linha(r, i) for r, i in duplicadas.items())
+        linhas = "\n".join(_linha(ch, i) for ch, i in duplicadas.items())
         st.warning(f"⚠️ **Atenção do Gabinete:** {len(duplicadas)} via(s) selecionada(s) já possuem indicação recente registrada no SAPL ou no SIGI:\n\n{linhas}")
+
+    # ---- Mapa Interativo & Validação Cartográfica ------------------------- #
+    if selecionadas_chaves:
+        coords_data = []
+        for ch in selecionadas_chaves:
+            v_info = todas_vias_dict[ch]
+            rua_v = v_info["rua"]
+            bairro_v = v_info["bairro"]
+            val_info = geo.validar_rua(rua_v, bairro_v)
+            coords_data.append({
+                "Status": val_info["icone"],
+                "Via": rua_v,
+                "Bairro": bairro_v,
+                "Precisão Cartográfica": val_info["precisao"],
+                "Fonte GPS": val_info["fonte"],
+                "lat": val_info["coordenadas"][0],
+                "lon": val_info["coordenadas"][1],
+            })
+        df_coords = pd.DataFrame(coords_data)
+
+        with st.expander(f"🗺️ Validação das Ruas & Marcação no Mapa de Boa Vista ({len(selecionadas_chaves)} vias)", expanded=True):
+            col_map_a, col_map_b = st.columns([1.5, 1.5])
+            with col_map_a:
+                st.markdown("**📍 Marcação no Mapa de Boa Vista / RR:**")
+                st.map(df_coords[["lat", "lon"]], zoom=12, use_container_width=True)
+            with col_map_b:
+                st.markdown("**📋 Auditoria Cartográfica das Vias:**")
+                st.dataframe(df_coords[["Status", "Via", "Bairro", "Precisão Cartográfica"]], hide_index=True, use_container_width=True)
+                st.caption("🟢 **Ponto Exato:** Malha viária OSM · 🟡 **GPS Nominatim:** Geocodificado · 🟠 **Centroide:** Bairro")
 
     # ---- Passo 4: Redação da Justificativa -------------------------------- #
     st.write("")
     passo_executivo(4, "Redação e Fundamentação Legislativa")
+
+    est_cod_final = estacao_ativa if estacao_ativa != "auto" else est_cod_auto
+    if est_cod_final == "verao":
+        st.markdown(
+            """
+            <div style="background: rgba(255, 85, 0, 0.12); border: 1px solid rgba(255, 85, 0, 0.35); border-left: 4px solid #FF5500; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; font-size: 0.88rem; color: #FED7AA;">
+                ☀️ <b>Sazonalidade Ativa: Verão / Estiagem em Boa Vista (Clima Seco)</b><br>
+                As justificativas deste lote foram adaptadas para o período seco: enfocam <b>poeira intensa, asfalto ressecado pelo sol forte, pedras soltas e perigo de queimadas em terrenos baldios</b>. <u>Não citam chuvas nem alagamentos</u>.
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    else:
+        st.markdown(
+            """
+            <div style="background: rgba(37, 99, 235, 0.12); border: 1px solid rgba(37, 99, 235, 0.35); border-left: 4px solid #3B82F6; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; font-size: 0.88rem; color: #BFDBFE;">
+                🌧️ <b>Sazonalidade Ativa: Inverno / Período Chuvoso (Boa Vista)</b><br>
+                As justificativas deste lote enfocam <b>águas pluviais retidas nos buracos, infiltrações, poças d'água, enxurradas e atoleiros</b>.
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
     usar_custom = st.toggle("Personalizar o texto da justificativa para este lote")
     custom = ""
     if usar_custom:
@@ -918,20 +645,26 @@ with aba_gerar:
             "Texto da Justificativa", height=130, key="just_custom",
             placeholder="Dica: use {rua} e {bairro} para substituição automática.")
 
-    def justificativa_para(rua: str) -> str:
+    def justificativa_para(rua_item: str, bairro_item: str) -> str:
         if usar_custom and custom.strip():
-            return custom.replace("{rua}", rua).replace("{bairro}", bairro)
-        return gerar_justificativa(tipo, rua, bairro)
+            return custom.replace("{rua}", rua_item).replace("{bairro}", bairro_item)
+        return gerar_justificativa(tipo, rua_item, bairro_item, estacao=estacao_ativa, data_ref=data_doc)
 
-    exemplo = selecionadas[0] if selecionadas else (todas[0] if todas else "Rua Exemplo")
+    exemplo_chave = selecionadas_chaves[0] if selecionadas_chaves else (todas_chaves[0] if todas_chaves else "")
+    if exemplo_chave and exemplo_chave in todas_vias_dict:
+        ex_rua = todas_vias_dict[exemplo_chave]["rua"]
+        ex_bairro = todas_vias_dict[exemplo_chave]["bairro"]
+    else:
+        ex_rua, ex_bairro = "Rua Exemplo", (bairros_selecionados[0] if bairros_selecionados else "Centro")
+
     st.markdown(
         f"""
         <div class="gov-doc-sheet">
-            <div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.08em; font-weight:700; color:#F59E0B; margin-bottom:8px;">
+            <div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.08em; font-weight:700; color:#FF5500; margin-bottom:8px;">
                 Pré-visualização Oficial · Padrão Gabinete Ítalo Otávio
             </div>
-            <b>{gerar_texto_solicitacao(tipo, exemplo, bairro)}</b><br><br>
-            <b>Justificativa:</b> {justificativa_para(exemplo).replace(chr(10) + chr(10), '<br><br>')}
+            <b>{gerar_texto_solicitacao(tipo, ex_rua, ex_bairro)}</b><br><br>
+            <b>Justificativa:</b> {justificativa_para(ex_rua, ex_bairro).replace(chr(10) + chr(10), '<br><br>')}
         </div>
         """,
         unsafe_allow_html=True,
@@ -944,18 +677,18 @@ with aba_gerar:
     incluir_mapa = st.toggle("📷 Incluir Croqui / Print do Mapa no documento oficial", value=True,
                              help="Gera e insere o print georreferenciado da via com marcador oficial da CMBV.")
 
-    if incluir_mapa and selecionadas:
-        with st.expander(f"🗺️ Prévia do Print do Mapa: {exemplo} ({bairro})", expanded=True):
+    if incluir_mapa and selecionadas_chaves:
+        with st.expander(f"🗺️ Prévia do Print do Mapa: {ex_rua} ({ex_bairro})", expanded=True):
             c_m1, c_m2 = st.columns([2, 1], vertical_alignment="center")
             with c_m1:
                 try:
-                    img_previa = geo.obter_mapa_rua(exemplo, bairro, tipo)
-                    st.image(img_previa, caption=f"Print oficial gerado: {exemplo} — {bairro}", width=480)
+                    img_previa = geo.obter_mapa_rua(ex_rua, ex_bairro, tipo)
+                    st.image(img_previa, caption=f"Print oficial gerado: {ex_rua} — {ex_bairro}", width=480)
                 except Exception as exc:
                     st.caption(f"Prévia do mapa: {exc}")
             with c_m2:
                 st.markdown("**Localização Automática e Precisa**")
-                st.caption(f"O SIGI gera automaticamente este mapa com pin centralizado para cada uma das {len(selecionadas)} via(s) selecionadas.")
+                st.caption(f"O SIGI gera automaticamente este mapa com pin centralizado para cada uma das {len(selecionadas_chaves)} via(s) selecionadas.")
                 st.caption("✔️ Coordenadas georreferenciadas na malha de Boa Vista/RR.")
                 st.caption("✔️ Inserido perfeitamente no .docx após a justificativa.")
 
@@ -1005,15 +738,15 @@ with aba_gerar:
                 st.warning("⚠️ Nenhuma imagem de assinatura fornecida. O documento será gerado sem assinatura.")
 
     st.write("")
-    a_gerar = [r for r in selecionadas if not (pular_duplicadas and recente(r))]
-    pulo = len(selecionadas) - len(a_gerar)
+    a_gerar_chaves = [ch for ch in selecionadas_chaves if not (pular_duplicadas and recente_chave(ch))]
+    pulo = len(selecionadas_chaves) - len(a_gerar_chaves)
     g1, g2 = st.columns([1.2, 2], vertical_alignment="center")
-    clicou = g1.button(f"🚀 Gerar {len(a_gerar)} Indicação(ões) em .docx", type="primary", width="stretch",
-                       disabled=not a_gerar, key="btn_gerar")
+    clicou = g1.button(f"🚀 Gerar {len(a_gerar_chaves)} Indicação(ões) em .docx", type="primary", width="stretch",
+                       disabled=not a_gerar_chaves, key="btn_gerar")
 
     if pulo:
         g2.caption(f"{pulo} via(s) com registro recente foram ignoradas.")
-    elif not selecionadas:
+    elif not selecionadas_chaves:
         g2.caption("Selecione pelo menos uma rua acima para iniciar a geração.")
 
     if clicou:
@@ -1024,15 +757,25 @@ with aba_gerar:
         def atualizar(i: int, total: int, rua: str) -> None:
             barra.progress(i / total, text=f"Gerando {i}/{total} · {rua}")
 
-        itens = [{"rua": r, "bairro": bairro, "tipo_servico": tipo, "justificativa": justificativa_para(r),
-                  "data": data_doc, "caixa_alta": caixa_alta} for r in a_gerar]
+        itens = [
+            {
+                "rua": todas_vias_dict[ch]["rua"],
+                "bairro": todas_vias_dict[ch]["bairro"],
+                "tipo_servico": tipo,
+                "justificativa": justificativa_para(todas_vias_dict[ch]["rua"], todas_vias_dict[ch]["bairro"]),
+                "data": data_doc,
+                "caixa_alta": caixa_alta,
+            }
+            for ch in a_gerar_chaves
+        ]
         try:
             gerados = dg.gerar_lote(
                 TEMPLATE_PATH, itens, pasta_lote, progresso=atualizar,
                 incluir_mapa=incluir_mapa,
                 imagem_assinatura=img_assinatura_final,
                 incluir_carimbo=usar_carimbo_final,
-                incluir_bloco_assinatura=True
+                incluir_bloco_assinatura=True,
+                padrao_nome="numero"  # Nomenclatura oficial solicitada: de 1 até N (1.docx, 2.docx, ...)
             )
             nome_zip = dg.nome_zip_do_dia(OUTPUT_DIR)
             zip_bytes = dg.criar_zip([g["caminho"] for g in gerados])
@@ -1041,7 +784,7 @@ with aba_gerar:
                               "data": data_doc, "arquivo": g["arquivo"]} for g in gerados])
             ss["ultimo_lote"] = {"nome": nome_zip, "bytes": zip_bytes, "qtd": len(gerados),
                                  "arquivos": [g["arquivo"] for g in gerados], "pasta": str(pasta_lote)}
-            ss["_limpar_sel"] = chave_sel
+            ss["_limpar_sel"] = True
             st.toast(f"{len(gerados)} indicações geradas com sucesso!", icon="✅")
             st.rerun()
         except Exception as exc:
@@ -1516,20 +1259,44 @@ with aba_conf:
         st.success("Cache do OpenStreetMap resetado com sucesso.")
         st.rerun()
 
+    st.markdown(
+        """
+        <div class="gov-author-discreet">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <span style="font-weight:800; color:#FF5500;">SIGI</span>
+                <span>· Sistema Inteligente de Geração de Indicações Legislativas</span>
+            </div>
+            <div>
+                Desenvolvido por <b>Valbert Breno</b> · Engenharia de Software
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
 # --------------------------------------------------------------------------- #
 # Rodapé Institucional
 # --------------------------------------------------------------------------- #
 st.markdown(
     """
     <div class="gov-footer">
-        <div>
-            <strong>SIGI</strong> — Sistema Inteligente de Geração de Indicações<br>
-            Gabinete Parlamentar de <strong>Ítalo Otávio</strong> · Vereador de Boa Vista e Deputado Federal Eleito por Roraima
+        <div style="display:flex; flex-direction:column; gap:4px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <span style="font-weight:900; color:#FF5500; font-size:1.15rem; letter-spacing:-0.02em;">SIGI</span>
+                <span style="color:#64748B;">·</span>
+                <span style="color:#E2E8F0; font-weight:700;">Gabinete Parlamentar Ítalo Otávio</span>
+            </div>
+            <div style="color:#94A3B8; font-size:0.84rem;">
+                Câmara Municipal de Boa Vista – RR · <i>Atitude para transformar!</i>
+            </div>
+            <div style="color:#64748B; font-size:0.78rem;">
+                Processo Legislativo e Cartografia Urbana · Boa Vista / Roraima
+            </div>
         </div>
-        <div>
-            Criador do Programa: <strong>Valbert Breno</strong> &nbsp;·&nbsp;
-            <a href="https://italootavio.com.br/" target="_blank">italootavio.com.br ↗</a> &nbsp;·&nbsp;
-            <a href="https://sapl.boavista.rr.leg.br/materia/pesquisar-materia?tipo=8&autoria__autor=70" target="_blank">Acervo SAPL ↗</a>
+        <div style="display:flex; gap:16px; font-size:0.82rem; align-items:center; flex-wrap:wrap;">
+            <a href="https://italootavio.com.br/" target="_blank">🌐 italootavio.com.br ↗</a>
+            <a href="https://www.instagram.com/italootavio" target="_blank">📸 @italootavio ↗</a>
+            <a href="https://sapl.boavista.rr.leg.br/materia/pesquisar-materia?tipo=8&autoria__autor=70" target="_blank">🏛️ SAPL CMBV ↗</a>
         </div>
     </div>
     """,

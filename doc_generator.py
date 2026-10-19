@@ -482,7 +482,8 @@ def gerar_lote(template: str | Path | bytes, itens: Iterable[dict], pasta_saida:
                incluir_mapa: bool = True,
                imagem_assinatura: bytes | None = None,
                incluir_carimbo: bool = False,
-               incluir_bloco_assinatura: bool = True) -> list[dict]:
+               incluir_bloco_assinatura: bool = True,
+               padrao_nome: str = "numero") -> list[dict]:
     """
     itens: dicts com rua, bairro, tipo_servico, justificativa, data (opcional), caixa_alta (opcional), imagem_mapa (opcional).
     Salva um .docx por rua em `pasta_saida` e devolve [{**item, 'arquivo': nome, 'caminho': Path}].
@@ -526,10 +527,16 @@ def gerar_lote(template: str | Path | bytes, itens: Iterable[dict], pasta_saida:
             incluir_bloco_assinatura=incluir_bloco_assinatura,
         )
 
-        base = f"{n:02d}_indicacao_{nome_arquivo_seguro(it['rua'])}_{nome_arquivo_seguro(it['bairro'], 30)}"
-        nome, k = f"{base}.docx", 2
-        while nome in usados:
-            nome, k = f"{base}_{k}.docx", k + 1
+        if padrao_nome == "descritivo":
+            base = f"{n:02d}_indicacao_{nome_arquivo_seguro(it['rua'])}_{nome_arquivo_seguro(it['bairro'], 30)}"
+            nome, k = f"{base}.docx", 2
+            while nome in usados:
+                nome, k = f"{base}_{k}.docx", k + 1
+        else:
+            # Padrão oficial solicitado: nomeados de 1 até N (1.docx, 2.docx, ...)
+            nome, k = f"{n}.docx", 2
+            while nome in usados:
+                nome, k = f"{n}_{k}.docx", k + 1
         usados.add(nome)
 
         caminho = pasta / nome

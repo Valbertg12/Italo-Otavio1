@@ -1,0 +1,653 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700&display=swap');
+
+html, body, [class*="css"], .stApp {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+    background-color: #060B18 !important;
+    color: #E2E8F0 !important;
+}
+
+h1, h2, h3, .brand-font {
+    font-family: 'Outfit', sans-serif !important;
+}
+
+.block-container {
+    padding-top: 1.2rem;
+    padding-bottom: 3.5rem;
+    max-width: 1360px;
+}
+
+#MainMenu, footer { visibility: hidden; }
+
+/* ------------------------------------------------------------------------- */
+/* Hero Capa Oficial Ítalo Otávio: Laranja Solar, Azul Royal & Raios Radiantes */
+/* ------------------------------------------------------------------------- */
+.gov-header, .gov-hero-cover {
+    position: relative;
+    overflow: hidden;
+    background: radial-gradient(circle at 88% 50%, rgba(255, 85, 0, 0.28) 0%, rgba(255, 229, 0, 0.12) 35%, transparent 68%),
+                linear-gradient(135deg, #070F20 0%, #0D1C38 52%, #142852 100%);
+    border: 1px solid #1E3A6D;
+    border-top: 4px solid #FF5500;
+    border-radius: 20px;
+    padding: 2rem 2.4rem;
+    margin-bottom: 1.6rem;
+    box-shadow: 0 16px 40px -8px rgba(0, 0, 0, 0.65), 0 0 35px rgba(255, 85, 0, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+/* Raios radiantes de Roraima no fundo */
+.gov-header::before, .gov-hero-cover::before {
+    content: '';
+    position: absolute;
+    top: -80px;
+    right: -80px;
+    width: 480px;
+    height: 480px;
+    background: radial-gradient(circle, rgba(255, 229, 0, 0.18) 0%, rgba(255, 85, 0, 0.12) 40%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+}
+
+/* Moldura e Efeito da Foto de Ítalo Otávio (Capa) */
+.gov-photo-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+}
+
+.gov-photo-img {
+    width: 195px;
+    height: 195px;
+    object-fit: cover;
+    object-position: top center;
+    border-radius: 22px;
+    border: 3px solid #FFE500;
+    box-shadow: 0 12px 35px rgba(0, 0, 0, 0.6), 0 0 30px rgba(255, 85, 0, 0.45);
+    transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.35s ease;
+}
+
+.gov-photo-img:hover {
+    transform: translateY(-4px) scale(1.03);
+    box-shadow: 0 18px 45px rgba(0, 0, 0, 0.7), 0 0 45px rgba(255, 229, 0, 0.55);
+}
+
+.gov-photo-badge {
+    margin-top: -14px;
+    z-index: 3;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 5px 14px;
+    border-radius: 9999px;
+    background: linear-gradient(135deg, #0B47BA 0%, #083387 100%);
+    color: #FFE500;
+    font-size: 0.74rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    border: 1.5px solid rgba(255, 229, 0, 0.75);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45), 0 0 12px rgba(11, 71, 186, 0.5);
+    backdrop-filter: blur(8px);
+}
+
+/* Barra Tricolor da Campanha / Mandato (Amarelo Solar, Azul Royal, Laranja Vibrante) */
+.brand-tricolor-bar {
+    display: flex;
+    height: 5px;
+    width: 100%;
+    max-width: 440px;
+    border-radius: 9999px;
+    overflow: hidden;
+    margin: 10px 0 14px 0;
+    box-shadow: 0 0 14px rgba(255, 85, 0, 0.45);
+}
+.brand-tricolor-bar .bar-yellow { flex: 1.2; background: #FFE500; }
+.brand-tricolor-bar .bar-blue   { flex: 1.8; background: #0B47BA; }
+.brand-tricolor-bar .bar-orange { flex: 1.5; background: #FF5500; }
+
+/* Badges de Identidade Visual */
+.gov-federal-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    background: #0B47BA;
+    color: #FFE500;
+    border: 1px solid rgba(255, 229, 0, 0.4);
+    box-shadow: 0 0 10px rgba(11, 71, 186, 0.5);
+}
+
+.gov-slogan-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    background: rgba(255, 85, 0, 0.16);
+    color: #FFAA55;
+    border: 1px solid rgba(255, 85, 0, 0.4);
+}
+
+.gov-brand-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 11px;
+    border-radius: 6px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    background: rgba(255, 85, 0, 0.12);
+    color: #FF7700;
+    border: 1px solid rgba(255, 85, 0, 0.3);
+}
+
+.gov-live-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 11px;
+    border-radius: 6px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    background: rgba(37, 99, 235, 0.15);
+    color: #93C5FD;
+    border: 1px solid rgba(37, 99, 235, 0.3);
+}
+
+.gov-season-badge-verao {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 700;
+    background: rgba(255, 85, 0, 0.18);
+    color: #FED7AA;
+    border: 1px solid rgba(255, 85, 0, 0.45);
+    box-shadow: 0 0 10px rgba(255, 85, 0, 0.2);
+}
+
+.gov-season-badge-inverno {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 700;
+    background: rgba(37, 99, 235, 0.18);
+    color: #BFDBFE;
+    border: 1px solid rgba(37, 99, 235, 0.45);
+    box-shadow: 0 0 10px rgba(37, 99, 235, 0.2);
+}
+
+.gov-dot-live {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #10B981;
+    display: inline-block;
+    box-shadow: 0 0 8px #10B981;
+}
+
+.gov-title {
+    margin: 10px 0 2px 0;
+    font-size: 2.5rem;
+    font-weight: 900;
+    letter-spacing: -0.02em;
+    color: #F8FAFC;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    position: relative;
+    z-index: 1;
+}
+
+.brand-italo {
+    color: #FFE500;
+    font-weight: 900;
+    font-family: 'Outfit', sans-serif !important;
+    letter-spacing: -0.01em;
+    text-shadow: 0 0 24px rgba(255, 229, 0, 0.45);
+}
+
+.brand-otavio {
+    color: #FFFFFF;
+    font-weight: 900;
+    font-family: 'Outfit', sans-serif !important;
+    letter-spacing: -0.01em;
+}
+
+.brand-sigi-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 12px;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    font-weight: 900;
+    letter-spacing: 0.1em;
+    background: linear-gradient(135deg, #FF5500 0%, #FF7700 100%);
+    color: #060B18;
+    box-shadow: 0 0 16px rgba(255, 85, 0, 0.5);
+    transform: translateY(-2px);
+}
+
+.brand-dot {
+    color: #FF5500;
+}
+
+.gov-hero-tagline {
+    font-size: 0.88rem;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    color: #FF8800;
+    text-transform: uppercase;
+    margin-top: 4px;
+}
+
+.gov-subtitle {
+    margin: 8px 0 0 0;
+    font-size: 0.98rem;
+    color: #94A3B8;
+    line-height: 1.55;
+    position: relative;
+    z-index: 1;
+}
+
+.gov-subtitle b {
+    color: #F1F5F9;
+}
+
+.gov-btn-link-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #060B18 !important;
+    text-decoration: none;
+    background: linear-gradient(135deg, #FFE500 0%, #FFB800 100%);
+    border: 1px solid rgba(255, 229, 0, 0.6);
+    padding: 8px 16px;
+    border-radius: 9px;
+    box-shadow: 0 2px 14px rgba(255, 229, 0, 0.35);
+    transition: all 0.25s ease;
+}
+
+.gov-btn-link-brand:hover {
+    background: linear-gradient(135deg, #FFF04D 0%, #FFC72C 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(255, 229, 0, 0.55);
+    text-decoration: none;
+    color: #000000 !important;
+}
+
+.gov-btn-link-blue {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #BFDBFE !important;
+    text-decoration: none;
+    background: rgba(11, 71, 186, 0.25);
+    border: 1px solid rgba(11, 71, 186, 0.5);
+    padding: 8px 16px;
+    border-radius: 9px;
+    transition: all 0.25s ease;
+}
+
+.gov-btn-link-blue:hover {
+    background: rgba(11, 71, 186, 0.45);
+    border-color: #3B82F6;
+    color: #FFFFFF !important;
+    transform: translateY(-2px);
+    text-decoration: none;
+}
+
+.gov-btn-link-insta {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #FFFFFF !important;
+    text-decoration: none;
+    background: linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    padding: 8px 16px;
+    border-radius: 9px;
+    box-shadow: 0 2px 12px rgba(220, 39, 67, 0.35);
+    transition: all 0.25s ease;
+}
+
+.gov-btn-link-insta:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 18px rgba(220, 39, 67, 0.6);
+    color: #FFFFFF !important;
+    text-decoration: none;
+}
+
+/* Crédito Discreto no final da última página */
+.gov-author-discreet {
+    margin-top: 50px;
+    padding: 16px 20px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    font-size: 0.78rem;
+    color: #64748B;
+    border-radius: 10px;
+    background: rgba(11, 20, 38, 0.4);
+}
+
+.gov-author-discreet b {
+    color: #94A3B8;
+    font-weight: 600;
+}
+
+/* ------------------------------------------------------------------------- */
+/* Card de Meta Diária com Destaque Solar Ítalo Otávio                        */
+/* ------------------------------------------------------------------------- */
+.gov-goal-card {
+    background: #0A1224;
+    border: 1px solid #192A4D;
+    border-radius: 14px;
+    padding: 1.3rem 1.7rem;
+    margin-bottom: 1.3rem;
+    box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.4);
+}
+
+.gov-progress-track {
+    height: 14px;
+    background: #111E38;
+    border-radius: 9999px;
+    overflow: hidden;
+    margin: 12px 0;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.gov-progress-fill {
+    height: 100%;
+    border-radius: 9999px;
+    background: linear-gradient(90deg, #FF5500 0%, #FFAA00 60%, #FFE500 100%);
+    box-shadow: 0 0 14px rgba(255, 85, 0, 0.6);
+    transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.gov-progress-fill.done {
+    background: linear-gradient(90deg, #10B981 0%, #34D399 100%);
+    box-shadow: 0 0 14px rgba(16, 185, 129, 0.5);
+}
+
+/* ------------------------------------------------------------------------- */
+/* KPI Cards com Visual Preline Corporativo                                 */
+/* ------------------------------------------------------------------------- */
+.gov-stat-card {
+    background: #0A1224;
+    border: 1px solid #182A4A;
+    border-radius: 14px;
+    padding: 1.25rem 1.45rem;
+    transition: all 0.2s ease;
+}
+
+.gov-stat-card:hover {
+    border-color: #FF5500;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+}
+
+.gov-stat-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #94A3B8;
+    margin-bottom: 4px;
+}
+
+.gov-stat-val {
+    font-family: 'Outfit', sans-serif !important;
+    font-size: 2.15rem;
+    font-weight: 800;
+    color: #F8FAFC;
+    line-height: 1.15;
+}
+
+.gov-stat-val.gold {
+    color: #FF5500;
+}
+
+.gov-stat-sub {
+    font-size: 0.8rem;
+    color: #64748B;
+    margin-top: 4px;
+}
+
+/* ------------------------------------------------------------------------- */
+/* Stepper Parlamentar                                                      */
+/* ------------------------------------------------------------------------- */
+.gov-step-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: #0E1A33;
+    border: 1px solid #20355E;
+    padding: 5px 14px 5px 6px;
+    border-radius: 10px;
+    margin-bottom: 12px;
+}
+
+.gov-step-num {
+    width: 24px;
+    height: 24px;
+    border-radius: 7px;
+    background: linear-gradient(135deg, #FF5500 0%, #FF7700 100%);
+    color: #FFFFFF;
+    font-weight: 800;
+    font-size: 0.82rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 8px rgba(255, 85, 0, 0.4);
+}
+
+.gov-step-title {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: #F1F5F9;
+}
+
+/* ------------------------------------------------------------------------- */
+/* Folha de Pré-visualização de Documento Oficial                           */
+/* ------------------------------------------------------------------------- */
+.gov-doc-sheet {
+    background: #080F1E;
+    border: 1px solid #1C2E52;
+    border-left: 4px solid #FF5500;
+    border-radius: 10px;
+    padding: 18px 22px;
+    font-size: 0.92rem;
+    line-height: 1.6;
+    color: #CBD5E1;
+}
+
+.gov-doc-sheet b {
+    color: #F8FAFC;
+}
+
+/* ------------------------------------------------------------------------- */
+/* Botões Streamlit no Estilo Gabinete Ítalo Otávio                          */
+/* ------------------------------------------------------------------------- */
+.stButton > button[kind="primary"], .stDownloadButton > button[kind="primary"] {
+    background: linear-gradient(135deg, #FF5500 0%, #FF7700 50%, #FF9900 100%) !important;
+    color: #060B18 !important;
+    font-weight: 800 !important;
+    font-size: 0.96rem !important;
+    border: none !important;
+    border-radius: 12px !important;
+    box-shadow: 0 4px 20px rgba(255, 85, 0, 0.45), 0 0 10px rgba(255, 229, 0, 0.25) !important;
+    transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
+    letter-spacing: 0.02em !important;
+}
+
+.stButton > button[kind="primary"]:hover, .stDownloadButton > button[kind="primary"]:hover {
+    background: linear-gradient(135deg, #FF6600 0%, #FF8800 50%, #FFAA00 100%) !important;
+    box-shadow: 0 8px 30px rgba(255, 85, 0, 0.65), 0 0 20px rgba(255, 229, 0, 0.45) !important;
+    transform: translateY(-2px) !important;
+    color: #000000 !important;
+}
+
+.stButton > button, .stDownloadButton > button {
+    border-radius: 11px !important;
+    border: 1px solid #1E3A6D !important;
+    background: linear-gradient(135deg, #0D1933 0%, #122247 100%) !important;
+    color: #F1F5F9 !important;
+    font-weight: 600 !important;
+    transition: all 0.2s ease !important;
+}
+
+.stButton > button:hover {
+    border-color: #FF5500 !important;
+    color: #FFFFFF !important;
+    box-shadow: 0 0 15px rgba(255, 85, 0, 0.25) !important;
+    transform: translateY(-1px) !important;
+}
+
+/* ------------------------------------------------------------------------- */
+/* Tabs Elegantes Preline Glassmorphism                                      */
+/* ------------------------------------------------------------------------- */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 8px;
+    background: rgba(10, 18, 36, 0.6);
+    padding: 6px;
+    border-radius: 14px;
+    border: 1px solid rgba(30, 58, 109, 0.5);
+    margin-bottom: 1.2rem;
+    backdrop-filter: blur(10px);
+}
+
+.stTabs [data-baseweb="tab"] {
+    border-radius: 10px;
+    padding: 10px 18px;
+    font-weight: 700;
+    color: #94A3B8 !important;
+    border: 1px solid transparent;
+    transition: all 0.2s ease;
+}
+
+.stTabs [data-baseweb="tab"]:hover {
+    color: #F8FAFC !important;
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.stTabs [aria-selected="true"] {
+    color: #FFE500 !important;
+    background: linear-gradient(135deg, rgba(255, 85, 0, 0.22) 0%, rgba(11, 71, 186, 0.25) 100%) !important;
+    border: 1px solid rgba(255, 85, 0, 0.45) !important;
+    box-shadow: 0 4px 15px rgba(255, 85, 0, 0.2);
+}
+
+/* ------------------------------------------------------------------------- */
+/* Sidebar Executiva com Identidade Oficial                                 */
+/* ------------------------------------------------------------------------- */
+section[data-testid="stSidebar"] {
+    background-color: #070D1E !important;
+    border-right: 1px solid #142447 !important;
+}
+
+.sidebar-brand-card {
+    background: linear-gradient(135deg, #0B1733 0%, #102147 100%);
+    border: 1px solid #1C386E;
+    border-top: 3px solid #FFE500;
+    border-radius: 16px;
+    padding: 16px;
+    margin-bottom: 14px;
+    box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.5), 0 0 16px rgba(255, 85, 0, 0.12);
+}
+
+.gov-action-box {
+    background: #0A1224;
+    border: 1px solid #182A4D;
+    border-radius: 14px;
+    padding: 1.3rem;
+    margin-bottom: 1.3rem;
+}
+
+/* ------------------------------------------------------------------------- */
+/* Rodapé Institucional do Gabinete                                          */
+/* ------------------------------------------------------------------------- */
+.gov-footer {
+    border-top: 1px solid #182A4D;
+    margin-top: 3.5rem;
+    padding-top: 1.8rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 16px;
+    color: #64748B;
+    font-size: 0.85rem;
+}
+
+.gov-footer a {
+    color: #FFAA55;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.gov-footer a:hover {
+    text-decoration: underline;
+    color: #FFE500;
+}
+
+/* ------------------------------------------------------------------------- */
+/* Responsividade para Celulares (iPhone iOS e Android)                     */
+/* ------------------------------------------------------------------------- */
+@media (max-width: 768px) {
+    .block-container {
+        padding-top: 0.5rem !important;
+        padding-bottom: 2.5rem !important;
+        padding-left: 0.65rem !important;
+        padding-right: 0.65rem !important;
+    }
+
+    .gov-header {
+        padding: 1.2rem 1rem !important;
+        border-radius: 12px !important;
+    }
+
+    .gov-title {
+        font-size: 1.6rem !important;
+    }
+
+    .stButton > button, .stDownloadButton > button {
+        min-height: 48px !important;
+        font-size: 0.95rem !important;
+        width: 100% !important;
+    }
+
+    .gov-doc-sheet {
+        padding: 12px 14px !important;
+        font-size: 0.84rem !important;
+        word-break: break-word !important;
+    }
+}

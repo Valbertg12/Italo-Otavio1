@@ -583,34 +583,87 @@ def _geocodificar_nominatim(rua: str, bairro: str = "") -> tuple[float, float] |
 def obter_coordenadas_rua(rua: str, bairro: str) -> tuple[float, float]:
     """
     Retorna (lat, lon) georreferenciados precisos para a rua e bairro em Boa Vista/RR.
-    1. Geocodificação precisa em tempo real via Nominatim (OpenStreetMap) buscando na malha de Boa Vista.
-    2. Cache local do bairro por ponto georreferenciado da via.
+    1. Geometria cartográfica oficial direta do bairro (OpenStreetMap/Overpass).
+    2. Geocodificação precisa em tempo real via Nominatim (OpenStreetMap).
     3. Fallback inteligente: Centroide consolidado do próprio BAIRRO (nunca cai no Centro se o bairro for outro).
     """
     chave_b = normalizar(bairro)
     chave_r = normalizar(rua)
-    pt_bairro = obter_centroide_bairro(bairro)
 
-    # 1. Geocodificação precisa em tempo real (OpenStreetMap)
-    pt_nom = _geocodificar_nominatim(rua, bairro)
-    if pt_nom:
-        return pt_nom
-
-    # 2. Tenta buscar no cache de ruas do bairro
+    # 1. Verifica no cache de vias mapeadas do bairro (geometria oficial direta do OpenStreetMap)
     cache_ruas = _cache_get(f"ruas::{chave_b}", aceitar_vencido=True) or []
     for r in cache_ruas:
         if normalizar(r.get("nome", "")) == chave_r and r.get("ponto"):
             pt = r["ponto"]
-            # Se for bairro fora do Centro, garante que não seja o ponto genérico antigo do centro
-            if chave_b != "centro":
-                pt_centro = (2.819611, -60.6711632)
-                if abs(pt[0] - pt_centro[0]) > 0.002 or abs(pt[1] - pt_centro[1]) > 0.002:
-                    return float(pt[0]), float(pt[1])
-            else:
-                return float(pt[0]), float(pt[1])
+            return float(pt[0]), float(pt[1])
+
+    for r in cache_ruas:
+        nome_norm = normalizar(r.get("nome", ""))
+        if (chave_r in nome_norm or nome_norm in chave_r) and r.get("ponto"):
+            pt = r["ponto"]
+            return float(pt[0]), float(pt[1])
+
+    # 2. Geocodificação precisa em tempo real (OpenStreetMap Nominatim)
+    pt_nom = _geocodificar_nominatim(rua, bairro)
+    if pt_nom:
+        return pt_nom
 
     # 3. Fallback: Centroide exato do BAIRRO selecionado (garante que o mapa fique no bairro correto)
-    return pt_bairro
+    return obter_centroide_bairro(bairro)
+
+
+def validar_rua(rua: str, bairro: str) -> dict:
+    """
+    Verifica a precisão cartográfica da rua e suas coordenadas em Boa Vista/RR.
+    Retorna dict com status de validação, nível de precisão, fonte e coordenadas.
+    """
+    chave_b = normalizar(bairro)
+    chave_r = normalizar(rua)
+    cache_ruas = _cache_get(f"ruas::{chave_b}", aceitar_vencido=True) or []
+
+    # 1. Correspondência exata no bairro
+    for r in cache_ruas:
+        if normalizar(r.get("nome", "")) == chave_r and r.get("ponto"):
+            return {
+                "valida": True,
+                "precisao": "Alta (Ponto Exato OSM)",
+                "fonte": "Malha Viária OpenStreetMap",
+                "coordenadas": (float(r["ponto"][0]), float(r["ponto"][1])),
+                "icone": "🟢",
+            }
+
+    # 2. Correspondência aproximada no bairro
+    for r in cache_ruas:
+        nome_norm = normalizar(r.get("nome", ""))
+        if (chave_r in nome_norm or nome_norm in chave_r) and r.get("ponto"):
+            return {
+                "valida": True,
+                "precisao": "Alta (Aproximada OSM)",
+                "fonte": f"OpenStreetMap ({r['nome']})",
+                "coordenadas": (float(r["ponto"][0]), float(r["ponto"][1])),
+                "icone": "🟢",
+            }
+
+    # 3. Geocodificação Nominatim
+    pt_nom = _geocodificar_nominatim(rua, bairro)
+    if pt_nom:
+        return {
+            "valida": True,
+            "precisao": "Boa (GPS Nominatim)",
+            "fonte": "OpenStreetMap Nominatim",
+            "coordenadas": pt_nom,
+            "icone": "🟡",
+        }
+
+    # 4. Centroide oficial do Bairro
+    pt_b = obter_centroide_bairro(bairro)
+    return {
+        "valida": False,
+        "precisao": "Média (Centroide do Bairro)",
+        "fonte": f"Centroide Oficial ({bairro})",
+        "coordenadas": pt_b,
+        "icone": "🟠",
+    }
 
 
 def obter_mapa_rua(rua: str, bairro: str, tipo_servico: str = "") -> bytes:
