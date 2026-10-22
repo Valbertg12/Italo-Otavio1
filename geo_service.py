@@ -680,6 +680,9 @@ def obter_coordenadas_rua(rua: str, bairro: str) -> tuple[float, float]:
     return cb_lat, cb_lon
 
 
+_geocodificar_nominatim = geocodificar_rua_precisa
+
+
 def validar_rua(rua: str, bairro: str) -> dict:
     """
     Verifica a precisão cartográfica da rua e suas coordenadas em Boa Vista/RR.
@@ -713,7 +716,7 @@ def validar_rua(rua: str, bairro: str) -> dict:
             }
 
     # 3. Geocodificação Nominatim
-    pt_nom = _geocodificar_nominatim(rua, bairro)
+    pt_nom = geocodificar_rua_precisa(rua, bairro)
     if pt_nom:
         return {
             "valida": True,
