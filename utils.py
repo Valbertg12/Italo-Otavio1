@@ -161,8 +161,10 @@ def obter_centroide_bairro(nome: str) -> tuple[float, float]:
 # --------------------------------------------------------------------------- #
 # Datas
 # --------------------------------------------------------------------------- #
-def data_por_extenso(d: date | datetime | None = None) -> str:
+def data_por_extenso(d: date | datetime | str | None = None) -> str:
     """02 de junho de 2026."""
+    if isinstance(d, str):
+        return d
     d = d or date.today()
     return f"{d.day:02d} de {MESES_PT[d.month - 1]} de {d.year}"
 

@@ -301,7 +301,7 @@ def _inserir_imagem_mapa(doc: Document, imagem_bytes: bytes, rua: str, bairro: s
         p_cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
         p_cap.paragraph_format.space_before = Pt(2)
         p_cap.paragraph_format.space_after = Pt(12)
-        r_cap = p_cap.add_run(f"Figura 1 — Croqui de Localização: {rua}, Bairro {bairro} — Boa Vista/RR")
+        r_cap = p_cap.add_run(f"Figura 1 — Croqui de Localização: {rua}, Bairro {bairro} — Boa Vista/RR (Integrado ao Google Maps & Waze)")
         r_cap.font.size = Pt(9)
         r_cap.font.italic = True
 
@@ -313,14 +313,18 @@ def _inserir_imagem_mapa(doc: Document, imagem_bytes: bytes, rua: str, bairro: s
 
 
 def _inserir_assinatura(doc: Document, imagem_assinatura: bytes) -> bool:
-    """Insere a rubrica/assinatura visual do vereador centralizada imediatamente acima da linha de assinatura."""
+    """
+    Insere a rubrica/assinatura visual do vereador centralizada e remove
+    automaticamente o bloco manual (linha e textos), garantindo que fique
+    APENAS a imagem anexada, sem solicitar assinatura manual repetida.
+    """
     if not imagem_assinatura:
         return False
     try:
         alvo = None
         for p in doc.paragraphs:
             t = p.text.strip().upper()
-            if "____" in t or "ÍTALO OTÁVIO" in t or "ITALO OTAVIO" in t:
+            if "____" in t or "TALO OT" in t or "ITALO OTAVIO" in t or "{{ASSINATURA}}" in t:
                 alvo = p
                 break
 
@@ -332,11 +336,21 @@ def _inserir_assinatura(doc: Document, imagem_assinatura: bytes) -> bool:
             r = p_sig.add_run()
             r.add_picture(io.BytesIO(imagem_assinatura), width=Cm(4.8))
             alvo._p.addprevious(p_sig._p)
+
+            # Remove os parágrafos do bloco manual de assinatura
+            for p in list(doc.paragraphs):
+                if p == p_sig:
+                    continue
+                t = p.text.strip().upper()
+                if "____" in t or "TALO OT" in t or "ITALO OTAVIO" in t or "VEREADOR DE BOA VISTA" in t or "{{ASSINATURA}}" in t:
+                    try:
+                        p._p.getparent().remove(p._p)
+                    except Exception:
+                        pass
             return True
     except Exception:
         pass
     return False
-
 
 def _inserir_carimbo_digital(doc: Document, texto_carimbo: str) -> None:
     """Insere a certificação digital ICP-Brasil com hash e carimbo legal no rodapé."""
@@ -408,19 +422,32 @@ def _aplicar_modo_auto(doc: Document, valores: dict[str, str],
 # Geração
 # --------------------------------------------------------------------------- #
 def gerar_documento(template: str | Path | bytes, valores: dict[str, str],
-                    imagem_mapa: bytes | None = None, incluir_mapa: bool = True,
+                    imagem_mapa: bytes | None = None, incluir_mapa: bool = False,
                     imagem_assinatura: bytes | None = None,
                     texto_carimbo: str | None = None,
-                    incluir_bloco_assinatura: bool = True) -> bytes:
+                    incluir_bloco_assinatura: bool | None = None) -> bytes:
     """
     Preenche o template e devolve o .docx em bytes.
     Preserva 100% de cabeçalhos e rodapés com imagens, tabelas e formatações originais.
     Suporta tanto modelos com tags ({{RUA}}, etc.) quanto modelos oficiais sem tags.
-    Aplica assinatura visual e carimbo criptográfico SOMENTE se fornecidos / configurados.
-    Se nenhuma assinatura for anexada, NENHUMA assinatura ou carimbo será inserido.
+    Remove fotos residuais estáticas do corpo do template para que nunca vazem em documentos gerados.
+    Se imagem de assinatura for anexada, coloca APENAS a imagem e remove o bloco de assinatura manual.
+    Se nenhuma imagem de assinatura for anexada, preserva a linha oficial para assinatura à caneta.
     """
     origem = io.BytesIO(template) if isinstance(template, (bytes, bytearray)) else template
     doc = Document(origem)
+
+    # 1. Remove qualquer desenho estático residual do corpo do template (ex: fotos de ruas anteriores)
+    for p in doc.paragraphs:
+        for d in p._element.xpath('.//w:drawing'):
+            try:
+                d.getparent().remove(d)
+            except Exception:
+                pass
+
+    # 2. Se uma imagem de assinatura foi anexada, omite o bloco manual de assinatura
+    if incluir_bloco_assinatura is None:
+        incluir_bloco_assinatura = (imagem_assinatura is None)
 
     # Verifica se existem tags {{...}} no documento
     achou_tag = False
@@ -462,11 +489,11 @@ def gerar_documento(template: str | Path | bytes, valores: dict[str, str],
     if texto_carimbo:
         _inserir_carimbo_digital(doc, texto_carimbo)
 
-    # Opção de remoção de bloco de assinatura se solicitado pelo usuário
+    # Opção de remoção de bloco de assinatura manual (se não solicitado ou se imagem foi anexada)
     if not incluir_bloco_assinatura:
         for p in list(doc.paragraphs):
             t = p.text.strip().upper()
-            if "____" in t or "ÍTALO OTÁVIO" in t or "ITALO OTAVIO" in t or "VEREADOR DE BOA VISTA" in t:
+            if "____" in t or "TALO OT" in t or "ITALO OTAVIO" in t or "VEREADOR DE BOA VISTA" in t:
                 try:
                     p._p.getparent().remove(p._p)
                 except Exception:
@@ -476,24 +503,26 @@ def gerar_documento(template: str | Path | bytes, valores: dict[str, str],
     doc.save(buf)
     return buf.getvalue()
 
-
 def gerar_lote(template: str | Path | bytes, itens: Iterable[dict], pasta_saida: Path | None = None,
                progresso: Callable[[int, int, str], None] | None = None,
-               incluir_mapa: bool = True,
+               incluir_mapa: bool = False,
                imagem_assinatura: bytes | None = None,
                incluir_carimbo: bool = False,
-               incluir_bloco_assinatura: bool = True,
+               incluir_bloco_assinatura: bool | None = None,
                padrao_nome: str = "numero") -> list[dict]:
     """
     itens: dicts com rua, bairro, tipo_servico, justificativa, data (opcional), caixa_alta (opcional), imagem_mapa (opcional).
     Salva um .docx por rua em `pasta_saida` e devolve [{**item, 'arquivo': nome, 'caminho': Path}].
-    Gera automaticamente o print do mapa.
+    Se imagem_assinatura for anexada, coloca APENAS a imagem (sem linha de assinatura manual).
     Se imagem_assinatura for None e incluir_carimbo for False, NENHUMA assinatura ou carimbo será colocado.
     """
     pasta = Path(pasta_saida or OUTPUT_DIR)
     pasta.mkdir(parents=True, exist_ok=True)
     if isinstance(template, (str, Path)):
         template = Path(template).read_bytes()  # lê uma única vez
+
+    if incluir_bloco_assinatura is None:
+        incluir_bloco_assinatura = (imagem_assinatura is None)
 
     itens = list(itens)
     usados: set[str] = set()
@@ -512,7 +541,7 @@ def gerar_lote(template: str | Path | bytes, itens: Iterable[dict], pasta_saida:
                 img_mapa = None
 
         carimbo_txt = None
-        # SÓ gera carimbo se o usuário pediu E se houver assinatura anexada ou certificado ativo
+        # Só gera carimbo se o usuário pediu E se houver assinatura anexada ou certificado ativo
         if incluir_carimbo and (imagem_assinatura or sig_serv.tem_assinatura_ativa()):
             try:
                 carimbo_txt = sig_serv.gerar_carimbo_autenticidade(it["rua"], it["bairro"], it.get("data"))
@@ -545,7 +574,6 @@ def gerar_lote(template: str | Path | bytes, itens: Iterable[dict], pasta_saida:
         if progresso:
             progresso(n, len(itens), it["rua"])
     return resultado
-
 
 def criar_zip(arquivos: Iterable[Path]) -> bytes:
     buf = io.BytesIO()

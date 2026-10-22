@@ -10,6 +10,7 @@ Integração Oficial: SAPL (Sistema de Apoio ao Processo Legislativo da CMBV)
 from __future__ import annotations
 
 import base64
+from pathlib import Path
 import random
 import shutil
 from datetime import date, datetime
@@ -44,6 +45,7 @@ for _mod in (db, dg, geo, sapl, sig_serv):
     except Exception:
         pass
 from utils import (
+    DATA_DIR,
     META_DIARIA,
     MESES_ALERTA,
     OUTPUT_DIR,
@@ -670,31 +672,10 @@ with aba_gerar:
         unsafe_allow_html=True,
     )
 
-    # ---- Passo 5: Croqui e Geração em Lote ------------------------------- #
+    # ---- Passo 5: Assinatura do Parlamentar ------------------------------- #
     st.write("")
-    passo_executivo(5, "Mapa Georreferenciado e Localização")
-
-    incluir_mapa = st.toggle("📷 Incluir Croqui / Print do Mapa no documento oficial", value=True,
-                             help="Gera e insere o print georreferenciado da via com marcador oficial da CMBV.")
-
-    if incluir_mapa and selecionadas_chaves:
-        with st.expander(f"🗺️ Prévia do Print do Mapa: {ex_rua} ({ex_bairro})", expanded=True):
-            c_m1, c_m2 = st.columns([2, 1], vertical_alignment="center")
-            with c_m1:
-                try:
-                    img_previa = geo.obter_mapa_rua(ex_rua, ex_bairro, tipo)
-                    st.image(img_previa, caption=f"Print oficial gerado: {ex_rua} — {ex_bairro}", width=480)
-                except Exception as exc:
-                    st.caption(f"Prévia do mapa: {exc}")
-            with c_m2:
-                st.markdown("**Localização Automática e Precisa**")
-                st.caption(f"O SIGI gera automaticamente este mapa com pin centralizado para cada uma das {len(selecionadas_chaves)} via(s) selecionadas.")
-                st.caption("✔️ Coordenadas georreferenciadas na malha de Boa Vista/RR.")
-                st.caption("✔️ Inserido perfeitamente no .docx após a justificativa.")
-
-    # ---- Passo 6: Assinatura do Parlamentar ------------------------------- #
-    st.write("")
-    passo_executivo(6, "Assinatura do Parlamentar")
+    passo_executivo(5, "Assinatura do Parlamentar")
+    incluir_mapa = False
 
     sig_salva = sig_serv.obter_imagem_assinatura()
     c_s1, c_s2 = st.columns([1.5, 2.5], gap="large")
@@ -774,7 +755,7 @@ with aba_gerar:
                 incluir_mapa=incluir_mapa,
                 imagem_assinatura=img_assinatura_final,
                 incluir_carimbo=usar_carimbo_final,
-                incluir_bloco_assinatura=True,
+                incluir_bloco_assinatura=(img_assinatura_final is None),
                 padrao_nome="numero"  # Nomenclatura oficial solicitada: de 1 até N (1.docx, 2.docx, ...)
             )
             nome_zip = dg.nome_zip_do_dia(OUTPUT_DIR)

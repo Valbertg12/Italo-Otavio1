@@ -364,7 +364,7 @@ def _buscar_ruas_locais_db(bairro: str) -> list[dict]:
                         "highway": "residential",
                         "sem_pavimento": False,
                         "trechos": 1,
-                        "ponto": ponto_bairro
+                        "ponto": None
                     })
             saida.sort(key=lambda x: normalizar(x["nome"]))
             return saida
@@ -483,10 +483,14 @@ def gerar_imagem_mapa(lat: float, lon: float, titulo: str = "", subtitulo: str =
 
     def _baixar_tile(dx: int, dy: int):
         tx, ty = tile_x + dx, tile_y + dy
+        # Prioriza azulejos oficiais do Google Maps (Roadmap oficial) com fallback
         urls = [
-            f"https://tile.openstreetmap.org/{zoom}/{tx}/{ty}.png",
+            f"https://mt1.google.com/vt/lyrs=m&x={tx}&y={ty}&z={zoom}",
+            f"https://mt0.google.com/vt/lyrs=m&x={tx}&y={ty}&z={zoom}",
+            f"https://mt2.google.com/vt/lyrs=m&x={tx}&y={ty}&z={zoom}",
+            f"https://mt3.google.com/vt/lyrs=m&x={tx}&y={ty}&z={zoom}",
             f"https://a.basemaps.cartocdn.com/rastertiles/voyager/{zoom}/{tx}/{ty}.png",
-            f"https://b.basemaps.cartocdn.com/rastertiles/voyager/{zoom}/{tx}/{ty}.png",
+            f"https://tile.openstreetmap.org/{zoom}/{tx}/{ty}.png",
         ]
         for u in urls:
             try:
@@ -544,72 +548,136 @@ def gerar_imagem_mapa(lat: float, lon: float, titulo: str = "", subtitulo: str =
     return conteudo
 
 
-def _geocodificar_nominatim(rua: str, bairro: str = "") -> tuple[float, float] | None:
-    """Consulta rápida com cache ao serviço oficial de geocodificação do OpenStreetMap para achar a via em Boa Vista/RR."""
-    chave_cache = f"geo_nominatim::{normalizar(rua)}::{normalizar(bairro)}"
+def geocodificar_rua_precisa(rua: str, bairro: str = "") -> tuple[float, float] | None:
+    """
+    Geocodificação multi-motor com precisão métrica para Boa Vista/RR:
+    1. Google Maps Geocoding API (se chave configurada ou no ambiente)
+    2. Photon (Komoot / OSM) centrado nas coordenadas de Boa Vista/RR (2.82, -60.67)
+    3. Nominatim (OpenStreetMap) estruturado com parâmetros de logradouro
+    """
+    chave_cache = f"geo_precisa::{normalizar(rua)}::{normalizar(bairro)}"
     cached = _cache_get(chave_cache, aceitar_vencido=True)
     if cached and isinstance(cached, list) and len(cached) == 2:
         return float(cached[0]), float(cached[1])
 
-    headers = {"User-Agent": "SIGI-CMBV/1.0 (Camara Municipal de Boa Vista - Gabinete Parlamentar)"}
-    consultas = []
-    b_norm = normalizar(bairro)
-    if b_norm and b_norm not in ("centro", "outro", "outros", ""):
-        consultas.append(f"{rua}, {bairro}, Boa Vista, Roraima, Brasil")
-    consultas.append(f"{rua}, Boa Vista, Roraima, Brasil")
-
-    for q in consultas:
+    # 1. Google Maps Geocoding API (se GOOGLE_MAPS_API_KEY configurada)
+    import os
+    g_key = os.environ.get("GOOGLE_MAPS_API_KEY")
+    if not g_key:
         try:
-            resp = requests.get(
-                "https://nominatim.openstreetmap.org/search",
-                params={"q": q, "format": "json", "limit": 1},
-                headers=headers,
-                timeout=2.2
+            cfg_p = DATA_DIR / "config_maps.json"
+            if cfg_p.exists():
+                import json
+                g_key = json.loads(cfg_p.read_text(encoding="utf-8")).get("google_maps_api_key")
+        except Exception:
+            pass
+
+    if g_key:
+        try:
+            q_g = f"{rua}, {bairro}, Boa Vista - RR, Brasil"
+            resp_g = requests.get(
+                "https://maps.googleapis.com/maps/api/geocode/json",
+                params={"address": q_g, "key": g_key},
+                timeout=3.0
             )
-            if resp.status_code == 200:
-                dados = resp.json()
-                if dados:
-                    lat = float(dados[0]["lat"])
-                    lon = float(dados[0]["lon"])
-                    # Garante que as coordenadas estão dentro do município de Boa Vista/RR
+            if resp_g.status_code == 200:
+                res = resp_g.json().get("results", [])
+                if res:
+                    loc = res[0]["geometry"]["location"]
+                    lat, lon = float(loc["lat"]), float(loc["lng"])
                     if 2.5 <= lat <= 3.2 and -61.1 <= lon <= -60.4:
                         _cache_set(chave_cache, [lat, lon])
                         return lat, lon
         except Exception:
             pass
+
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) SIGI-CMBV/1.0"}
+    consultas = [
+        f"{rua}, {bairro}, Boa Vista",
+        f"{rua}, Boa Vista, Roraima",
+        f"{rua}, Boa Vista",
+    ]
+
+    # 2. Photon (Komoot / OSM) com viés geográfico em Boa Vista (2.8196, -60.6711)
+    for q in consultas:
+        try:
+            resp_p = requests.get(
+                "https://photon.komoot.io/api/",
+                params={"q": q, "lat": 2.8196, "lon": -60.6711, "limit": 3},
+                headers=headers,
+                timeout=3.0
+            )
+            if resp_p.status_code == 200:
+                features = resp_p.json().get("features", [])
+                for feat in features:
+                    props = feat.get("properties", {})
+                    city = str(props.get("city", "") or props.get("state", "")).lower()
+                    if "boa vista" in city or "roraima" in city or not props.get("city"):
+                        coords = feat.get("geometry", {}).get("coordinates", [])
+                        if len(coords) == 2:
+                            lon, lat = float(coords[0]), float(coords[1])
+                            if 2.5 <= lat <= 3.2 and -61.1 <= lon <= -60.4:
+                                _cache_set(chave_cache, [lat, lon])
+                                return lat, lon
+        except Exception:
+            pass
+
+    # 3. Nominatim (OpenStreetMap) estruturado
+    for q in consultas:
+        try:
+            resp_n = requests.get(
+                "https://nominatim.openstreetmap.org/search",
+                params={"q": q, "format": "json", "limit": 2, "countrycodes": "br"},
+                headers={"User-Agent": "SIGI-CMBV-Gabinete/1.0 (gab.italootavio@cmbv.rr.gov.br)"},
+                timeout=3.0
+            )
+            if resp_n.status_code == 200:
+                dados = resp_n.json()
+                if dados:
+                    lat = float(dados[0]["lat"])
+                    lon = float(dados[0]["lon"])
+                    if 2.5 <= lat <= 3.2 and -61.1 <= lon <= -60.4:
+                        _cache_set(chave_cache, [lat, lon])
+                        return lat, lon
+        except Exception:
+            pass
+
     return None
 
 
 def obter_coordenadas_rua(rua: str, bairro: str) -> tuple[float, float]:
     """
     Retorna (lat, lon) georreferenciados precisos para a rua e bairro em Boa Vista/RR.
-    1. Geometria cartográfica oficial direta do bairro (OpenStreetMap/Overpass).
-    2. Geocodificação precisa em tempo real via Nominatim (OpenStreetMap).
-    3. Fallback inteligente: Centroide consolidado do próprio BAIRRO (nunca cai no Centro se o bairro for outro).
+    1. Geometria real no cache (apenas se for ponto verificado e diferente do centroide genérico).
+    2. Geocodificação multi-motor de alta precisão (Google Maps / Photon / Nominatim).
+    3. Fallback inteligente: Centroide do bairro somente se a rua não for encontrada em nenhum mapa.
     """
     chave_b = normalizar(bairro)
     chave_r = normalizar(rua)
+    cb_lat, cb_lon = obter_centroide_bairro(bairro)
 
-    # 1. Verifica no cache de vias mapeadas do bairro (geometria oficial direta do OpenStreetMap)
+    # 1. Verifica no cache se há ponto real verificado
     cache_ruas = _cache_get(f"ruas::{chave_b}", aceitar_vencido=True) or []
     for r in cache_ruas:
         if normalizar(r.get("nome", "")) == chave_r and r.get("ponto"):
             pt = r["ponto"]
-            return float(pt[0]), float(pt[1])
+            # Descarta se o ponto for idêntico ao centroide genérico do bairro
+            if abs(float(pt[0]) - cb_lat) > 0.0001 or abs(float(pt[1]) - cb_lon) > 0.0001:
+                return float(pt[0]), float(pt[1])
 
-    for r in cache_ruas:
-        nome_norm = normalizar(r.get("nome", ""))
-        if (chave_r in nome_norm or nome_norm in chave_r) and r.get("ponto"):
-            pt = r["ponto"]
-            return float(pt[0]), float(pt[1])
+    # 2. Geocodificação multi-motor em tempo real (Google Maps + Photon + Nominatim)
+    pt_geo = geocodificar_rua_precisa(rua, bairro)
+    if pt_geo:
+        # Atualiza no cache de ruas para futuras consultas serem instantâneas
+        for r in cache_ruas:
+            if normalizar(r.get("nome", "")) == chave_r:
+                r["ponto"] = list(pt_geo)
+                _cache_set(f"ruas::{chave_b}", cache_ruas)
+                break
+        return pt_geo
 
-    # 2. Geocodificação precisa em tempo real (OpenStreetMap Nominatim)
-    pt_nom = _geocodificar_nominatim(rua, bairro)
-    if pt_nom:
-        return pt_nom
-
-    # 3. Fallback: Centroide exato do BAIRRO selecionado (garante que o mapa fique no bairro correto)
-    return obter_centroide_bairro(bairro)
+    # 3. Fallback: Centroide exato do bairro
+    return cb_lat, cb_lon
 
 
 def validar_rua(rua: str, bairro: str) -> dict:
