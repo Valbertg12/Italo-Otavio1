@@ -1,0 +1,16 @@
+{
+  "name": "sigi_app",
+  "version": "1.0.0",
+  "description": "Câmara Municipal de Boa Vista – RR",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "preline": "^4.2.0"
+  }
+}
